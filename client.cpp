@@ -3,10 +3,33 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <vector>
 
 using namespace std;
-class client {
+enum class  MESSAGETYPE{
+    LOGIN,
+    REGISTER,
+    CREATE_GAME,
+    JOIN_GAME,
+    EXIT_GAME,
+    UNREGISTER,
+    START_GAME,
+    PLAY_TURN
+};
 
+struct PlayerInfo{
+    char name[50];
+    char password[50];
+    int gameID; // -1 if not in a game
+    int socket_fd;
+};
+
+struct GameRoom {
+    int game_id;
+    std::vector<int> player_fds;
+    int max_players;
+};
+class client {
   public:
     void Login(char* name, char* password);
     void Register(char* name, char* password);
@@ -20,8 +43,13 @@ class client {
     int server_fd;
     std::string username;
     bool registered;
+
+    void sendDataToServer(const char* data);
 };
 
+void client::sendDataToServer(const char* data) {
+    
+}
 void client::Login(char* name, char* password) {
     // Implementation for login
 }
