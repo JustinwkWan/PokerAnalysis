@@ -4,7 +4,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
-#include <json.hpp>
+#include "json.hpp"
 using json = nlohmann::json;
 using namespace std;
 enum class MESSAGETYPE
@@ -36,6 +36,8 @@ struct GameRoom
 class client
 {
 public:
+  client();
+  ~client();
   bool Register(char *name);
   void createGame();
   void joinGame(int gameID);
@@ -43,7 +45,6 @@ public:
   void unRegister(char *name, char *password);
   void StartGame(int gameID);
   void PlayTurn(int gameID, int turnData);
-  json recieveMessage();
 
 private:
   int server_fd;
@@ -51,7 +52,32 @@ private:
   bool registered;
 
   void sendMessage(const json data);
+  json recieveMessage();
 };
+
+client::client()
+{
+  // creating socket
+  server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+  // specifying address
+  sockaddr_in serverAddress;
+  serverAddress.sin_family = AF_INET;
+  serverAddress.sin_port = htons(8080);
+  serverAddress.sin_addr.s_addr = INADDR_ANY;
+
+  // sending connection request
+  connect(server_fd, (struct sockaddr *)&serverAddress,
+          sizeof(serverAddress));
+
+  registered = false;
+}
+
+client::~client()
+{
+  // closing socket
+  close(server_fd);
+}
 
 void client::sendMessage(const json data)
 {
@@ -90,7 +116,7 @@ json client::recieveMessage()
 
   // create the buffer for the message
   vector<char> buffer(msg_length);
-  
+
   bytesRead = recv(server_fd, buffer.data(), msg_length, MSG_WAITALL);
   if (bytesRead != (ssize_t)msg_length)
   {
@@ -126,29 +152,7 @@ bool client::Register(char *name)
 
 int main()
 {
-
-  // creating socket
-  int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-
-  // specifying address
-  sockaddr_in serverAddress;
-  serverAddress.sin_family = AF_INET;
-  serverAddress.sin_port = htons(8080);
-  serverAddress.sin_addr.s_addr = INADDR_ANY;
-
-  // sending connection request
-  connect(clientSocket, (struct sockaddr *)&serverAddress,
-          sizeof(serverAddress));
-
-  char *name = new char[50];
-  char *password = new char[50];
-
-  // sending data
-  const char *message = "Hello, server!";
-  send(clientSocket, message, strlen(message), 0);
-
-  // closing socket
-  close(clientSocket);
-
+  client myClient;
+  myClient.Register("PlayerOne");
   return 0;
 }

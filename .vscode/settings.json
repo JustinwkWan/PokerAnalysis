@@ -2,6 +2,8 @@
   "files.associations": {
     "*.dbclient-js": "javascript",
     ".fantomasignore": "ignore",
-    "vector": "cpp"
+    "vector": "cpp",
+    "random": "cpp",
+    "stdexcept": "cpp"
   }
 }
