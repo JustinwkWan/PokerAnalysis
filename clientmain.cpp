@@ -13,6 +13,9 @@ int main() {
     // Give server time to process
     sleep(1);
     
+    // Test 2: 
+    cout << "\n--- Test 2: Create Game ---" << endl;
+    myClient.createGame(1000, 10, 20, 1);
     cout << "\n--- Test Complete ---" << endl;
     
   } catch (const std::exception& e) {

@@ -23,6 +23,7 @@ enum class MessageType
   CREATE_GAME,
   JOIN_GAME,
   EXIT_GAME,
+  EXIT_ROOM,
   UNREGISTER,
   START_GAME,
   PLAY_TURN,
@@ -47,6 +48,9 @@ private:
 
   void handleRegister(const json& request);
   void handleListGames(const json& request);
+  void handleCreateGame(const json& request);
+
+
   MessageType getMessageType(const std::string& typeStr);
 };
 

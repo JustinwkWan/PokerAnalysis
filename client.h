@@ -49,14 +49,14 @@ public:
   ~client();
   bool Register(char *name);
   void ListGames();
-void client::createGame(const int startingChips, 
+  void createGame(const int startingChips, 
   const int smallBlind, 
-  const int bigBlind, 
-  const int timePerTurn, 
+  const int bigBlind,
   const int GameID);
   void joinGame(int gameID);
-  void exitGame(int gameID);
-  void unRegister(char *name, char *password);
+  void exitGame();
+  void exitRoom();
+  void unRegister(char *name); // Dont know if needed 
   void StartGame(int gameID);
   void PlayTurn(int gameID, int turnData);
 
