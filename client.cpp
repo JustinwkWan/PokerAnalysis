@@ -1,75 +1,24 @@
-#include <cstring>
-#include <iostream>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <vector>
-#include "json.hpp"
-using json = nlohmann::json;
-using namespace std;
-enum class MESSAGETYPE
-{
-  LOGIN,
-  REGISTER,
-  CREATE_GAME,
-  JOIN_GAME,
-  EXIT_GAME,
-  UNREGISTER,
-  START_GAME,
-  PLAY_TURN
-};
-
-struct PlayerInfo
-{
-  char name[50];
-  char password[50];
-  int gameID; // -1 if not in a game
-  int socket_fd;
-};
-
-struct GameRoom
-{
-  int game_id;
-  std::vector<int> player_fds;
-  int max_players;
-};
-class client
-{
-public:
-  client();
-  ~client();
-  bool Register(char *name);
-  void createGame();
-  void joinGame(int gameID);
-  void exitGame(int gameID);
-  void unRegister(char *name, char *password);
-  void StartGame(int gameID);
-  void PlayTurn(int gameID, int turnData);
-
-private:
-  int server_fd;
-  std::string username;
-  bool registered;
-
-  void sendMessage(const json data);
-  json recieveMessage();
-};
+#include "client.h"
 
 client::client()
 {
   // creating socket
   server_fd = socket(AF_INET, SOCK_STREAM, 0);
-
+  if (server_fd < 0) {
+    throw std::runtime_error("Failed to create socket");
+  }
+  
   // specifying address
   sockaddr_in serverAddress;
   serverAddress.sin_family = AF_INET;
   serverAddress.sin_port = htons(8080);
   serverAddress.sin_addr.s_addr = INADDR_ANY;
-
+  
   // sending connection request
-  connect(server_fd, (struct sockaddr *)&serverAddress,
-          sizeof(serverAddress));
-
+  if (connect(server_fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0) {
+    throw std::runtime_error("Failed to connect to server");
+  }
+  
   registered = false;
 }
 
@@ -84,15 +33,14 @@ void client::sendMessage(const json data)
   // Serialize JSON to string
   string jsonString = data.dump();
   uint32_t length = htonl(jsonString.size());
-
+  
   // Send the length of the JSON string first
   ssize_t bytesSent = send(server_fd, &length, sizeof(length), 0);
   if (bytesSent != sizeof(length))
   {
-    cerr << "Error sending message length" << endl;
-    return;
+    throw std::runtime_error("Failed to send message length");
   }
-
+  
   // Now send the actual JSON string
   bytesSent = send(server_fd, jsonString.c_str(), jsonString.length(), 0);
   if (bytesSent != (ssize_t)jsonString.length())
@@ -110,66 +58,114 @@ json client::recieveMessage()
   {
     throw std::runtime_error("Failed to read message length");
   }
-
+  
   // Now read the actual JSON string based on the length
   uint32_t msg_length = ntohl(length);
-
+  
   // create the buffer for the message
   vector<char> buffer(msg_length);
-
   bytesRead = recv(server_fd, buffer.data(), msg_length, MSG_WAITALL);
   if (bytesRead != (ssize_t)msg_length)
   {
     throw std::runtime_error("Failed to read complete message");
   }
-
+  
   // Parse the JSON string
   string jsonString(buffer.begin(), buffer.end());
   return json::parse(jsonString);
 }
+
 bool client::Register(char *name)
 {
   json request = {
       {"type", "REGISTER"},
       {"name", name},
   };
-
+  
   sendMessage(request);
-
   json response = recieveMessage();
-
+  
   if (response["status"] == "SUCCESS")
   {
     cout << "Registration successful!" << endl;
     registered = true;
     username = name;
+    return true;
   }
   else
   {
     cout << "Registration failed: " << response["error"] << endl;
     return false; 
   }
-  return true; 
 }
 
-int main() {
-  cout << "=== Poker Client Starting ===" << endl;
-  
-  try {
-    // Test 1: Create client and register
-    cout << "\n--- Test 1: Register PlayerOne ---" << endl;
-    client myClient;
-    myClient.Register((char*)"PlayerOne");
-    
-    // Give server time to process
-    sleep(1);
-    
-    cout << "\n--- Test Complete ---" << endl;
-    
-  } catch (const std::exception& e) {
-    cerr << "Error: " << e.what() << endl;
-    return 1;
+void client::ListGames()
+{
+  json request = {
+      {"type", "LIST_GAMES"},
+  };
+
+  sendMessage(request);
+  json response = recieveMessage();
+
+  if (response["status"] != "SUCCESS") {
+    cout << "Failed to list games: " << response["error"] << endl;
+    return;
   }
-  
-  return 0;
+  cout << "Available Games:" << endl;
+  for (const auto& game : response["games"]) {
+    cout << "Game ID: " << game["game_id"] 
+    << ", Players: " << game["current_players"]
+    << "/" << game["max_players"] << endl; // add blinds/other info as needed
+  }
+}
+
+void client::createGame(const int startingChips, 
+  const int smallBlind, 
+  const int bigBlind, 
+  const int timePerTurn, 
+  const int GameID)
+{
+  json request = {
+      {"type", "CREATE_GAME"},
+      {"starting_chips", startingChips},
+      {"small_blind", smallBlind},
+      {"big_blind", bigBlind},
+      {"time_per_turn", timePerTurn},
+      {"game_id", GameID}
+  };
+
+  sendMessage(request);
+  json response = recieveMessage();
+
+  if (response["status"] == "SUCCESS") {
+    cout << "Game created successfully with Game ID: " << GameID << endl;
+  } else {
+    cout << "Failed to create game: " << response["error"] << endl;
+  }
+}
+
+void client::joinGame(int gameID)
+{
+  // TODO: Implement
+}
+
+void client::exitGame(int gameID)
+{
+  // TODO: Implement
+}
+
+void client::unRegister(char *name, char *password)
+{
+  // TODO: Implement
+}
+
+void client::StartGame(int gameID)
+{
+  // TODO: Implement
+}
+
+void client::PlayTurn(int gameID, int turnData)
+{
+  // TODO: Implement
 }

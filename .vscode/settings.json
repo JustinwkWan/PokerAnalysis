@@ -4,6 +4,7 @@
     ".fantomasignore": "ignore",
     "vector": "cpp",
     "random": "cpp",
-    "stdexcept": "cpp"
+    "stdexcept": "cpp",
+    "ostream": "cpp"
   }
 }

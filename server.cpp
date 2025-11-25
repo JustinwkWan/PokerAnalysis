@@ -1,29 +1,4 @@
-#include <cstring>
-#include <iostream>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <map>
-#include "json.hpp"
-
-using json = nlohmann::json;
-using namespace std;
-
-class Server {
-public:
-  Server();
-  ~Server();
-  void handleClient();
-  
-private:
-  int server_fd;
-  int client_fd;
-  map<string, int> registeredPlayers; // username -> socket_fd
-  
-  json receiveMessage(int clientSocket);
-  void sendMessage(int clientSocket, const json& data);
-  void handleRegister(const json& request);
-};
+#include "server.h"
 
 Server::Server() {
   // Create socket
@@ -58,9 +33,7 @@ Server::Server() {
     cerr << "Listen failed" << endl;
     exit(EXIT_FAILURE);
   }
-  
-  cout << "Server listening on port 8080..." << endl;
-  
+
   // Accept connection
   client_fd = accept(server_fd, nullptr, nullptr);
   if (client_fd < 0) {
@@ -68,7 +41,6 @@ Server::Server() {
     exit(EXIT_FAILURE);
   }
   
-  cout << "Client connected!" << endl;
 }
 
 Server::~Server() {
@@ -76,6 +48,18 @@ Server::~Server() {
   close(server_fd);
 }
 
+MessageType Server::getMessageType(const std::string& typeStr) {
+  if (typeStr == "LOGIN") return MessageType::LOGIN;
+  if (typeStr == "REGISTER") return MessageType::REGISTER;
+  if (typeStr == "CREATE_GAME") return MessageType::CREATE_GAME;
+  if (typeStr == "JOIN_GAME") return MessageType::JOIN_GAME;
+  if (typeStr == "EXIT_GAME") return MessageType::EXIT_GAME;
+  if (typeStr == "UNREGISTER") return MessageType::UNREGISTER;
+  if (typeStr == "START_GAME") return MessageType::START_GAME;
+  if (typeStr == "PLAY_TURN") return MessageType::PLAY_TURN;
+  if (typeStr == "LIST_GAMES") return MessageType::LIST_GAMES;
+  return MessageType::UNKNOWN;
+}
 json Server::receiveMessage(int clientSocket) {
   uint32_t msg_length_net;
   ssize_t received = recv(clientSocket, &msg_length_net, sizeof(msg_length_net), MSG_WAITALL);
@@ -110,6 +94,34 @@ void Server::sendMessage(int clientSocket, const json& message) {
   }
 }
 
+void Server::handleClient() {
+  try {
+    while (true) {
+      json request = receiveMessage(client_fd);
+      
+      cout << "\n=== Received Message ===" << endl;
+      cout << request.dump(2) << endl;
+      MessageType msgType = getMessageType(request["type"]);
+
+      switch (msgType) {
+        case MessageType::REGISTER:
+          handleRegister(request);
+          break;
+        case MessageType::LIST_GAMES:
+          handleListGames(request);
+          break;
+        default:
+          cout << "Unknown message type received." << endl;
+          break;
+      }
+    }
+  } catch (const std::exception& e) {
+    cerr << "Client handling error: " << e.what() << endl;
+    close(client_fd);
+  }
+}
+
+
 void Server::handleRegister(const json& request) {
   string username = request["name"];
   
@@ -140,34 +152,6 @@ void Server::handleRegister(const json& request) {
   cout << "Registration successful for: " << username << endl;
   cout << "Total registered players: " << registeredPlayers.size() << endl;
 }
-
-void Server::handleClient() {
-  try {
-    while (true) {
-      json request = receiveMessage(client_fd);
-      
-      cout << "\n=== Received Message ===" << endl;
-      cout << request.dump(2) << endl;
-      
-      string msgType = request["type"];
-      
-      if (msgType == "REGISTER") {
-        handleRegister(request);
-      } else {
-        cout << "Unknown message type: " << msgType << endl;
-      }
-    }
-  } catch (const std::exception& e) {
-    cerr << "Client handling error: " << e.what() << endl;
-    close(client_fd);
-  }
-}
-
-int main() {
-  cout << "=== Poker Server Starting ===" << endl;
+void Server::handleListGames(const json& request) {
   
-  Server server;
-  server.handleClient();
-  
-  return 0;
 }
