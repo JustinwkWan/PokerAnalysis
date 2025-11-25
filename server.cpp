@@ -1,129 +1,161 @@
-// C++ program to show the example of server application in
-// socket programming
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <map>
 #include "json.hpp"
-using json = nlohmann::json;
 
+using json = nlohmann::json;
 using namespace std;
 
-class Server
-{
-
+class Server {
 public:
   Server();
   ~Server();
-  void StartServer(int port);
-  void AcceptClient();
-  void ReceiveData(int clientSocket);
-  void SendData(int clientSocket, const char *data);
-  void StopServer();
   void handleClient();
+  
 private:
   int server_fd;
-  struct sockaddr_in address;
-  int opt = 1;
-  int addrlen = sizeof(address);
-
   int client_fd;
-  json recieveMessage(int clientSocket);
+  map<string, int> registeredPlayers; // username -> socket_fd
+  
+  json receiveMessage(int clientSocket);
   void sendMessage(int clientSocket, const json& data);
-  char buffer[1024] = {0};
+  void handleRegister(const json& request);
 };
 
-Server::Server()
-{
-  // creating socket file descriptor
+Server::Server() {
+  // Create socket
   server_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_fd == 0)
-  {
+  if (server_fd == 0) {
     cerr << "Socket creation error" << endl;
     exit(EXIT_FAILURE);
   }
-    sockaddr_in serverAddress;
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(8080);
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
-
-    // binding socket.
-    bind(server_fd, (struct sockaddr*)&serverAddress,
-         sizeof(serverAddress));
-
-    // listening to the assigned socket
-    listen(server_fd, 5);
-
-    // accepting connection request
-    int clientSocket
-        = accept(server_fd, nullptr, nullptr);
-  // attaching socket to the port
+  
+  // Set socket options
+  int opt = 1;
   if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                 &opt, sizeof(opt)))
-  {
+                 &opt, sizeof(opt))) {
     cerr << "setsockopt error" << endl;
     exit(EXIT_FAILURE);
   }
+  
+  // Setup address
+  sockaddr_in serverAddress;
+  serverAddress.sin_family = AF_INET;
+  serverAddress.sin_port = htons(8080);
+  serverAddress.sin_addr.s_addr = INADDR_ANY;
+  
+  // Bind socket
+  if (bind(server_fd, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+    cerr << "Bind failed" << endl;
+    exit(EXIT_FAILURE);
+  }
+  
+  // Listen
+  if (listen(server_fd, 5) < 0) {
+    cerr << "Listen failed" << endl;
+    exit(EXIT_FAILURE);
+  }
+  
+  cout << "Server listening on port 8080..." << endl;
+  
+  // Accept connection
+  client_fd = accept(server_fd, nullptr, nullptr);
+  if (client_fd < 0) {
+    cerr << "Accept failed" << endl;
+    exit(EXIT_FAILURE);
+  }
+  
+  cout << "Client connected!" << endl;
 }
 
-Server::~Server()
-{
+Server::~Server() {
+  close(client_fd);
   close(server_fd);
 }
 
-json Server::recieveMessage(int clientSocket)
-{
+json Server::receiveMessage(int clientSocket) {
   uint32_t msg_length_net;
-  ssize_t received = recv(client_fd, &msg_length_net, sizeof(msg_length_net), MSG_WAITALL);
-  if (received <= 0)
-  {
+  ssize_t received = recv(clientSocket, &msg_length_net, sizeof(msg_length_net), MSG_WAITALL);
+  if (received <= 0) {
     throw std::runtime_error("Client disconnected");
   }
-
+  
   uint32_t msg_length = ntohl(msg_length_net);
   std::vector<char> buffer(msg_length);
-
-  received = recv(client_fd, buffer.data(), msg_length, MSG_WAITALL);
-  if (received <= 0)
-  {
+  
+  received = recv(clientSocket, buffer.data(), msg_length, MSG_WAITALL);
+  if (received <= 0) {
     throw std::runtime_error("Client disconnected");
   }
-
+  
   std::string json_str(buffer.begin(), buffer.end());
   return json::parse(json_str);
 }
 
-void Server::sendMessage(int clientSocket, const json& message)
-{
+void Server::sendMessage(int clientSocket, const json& message) {
   std::string jsonString = message.dump();
   uint32_t length = htonl(jsonString.size());
-
+  
   ssize_t bytesSent = send(clientSocket, &length, sizeof(length), 0);
-  if (bytesSent != sizeof(length))
-  {
-    cerr << "Error sending message length" << endl;
-    return;
+  if (bytesSent != sizeof(length)) {
+    throw std::runtime_error("Failed to send message length");
   }
-
+  
   bytesSent = send(clientSocket, jsonString.c_str(), jsonString.length(), 0);
-  if (bytesSent != (ssize_t)jsonString.length())
-  {
+  if (bytesSent != (ssize_t)jsonString.length()) {
     throw std::runtime_error("Failed to send message");
   }
+}
+
+void Server::handleRegister(const json& request) {
+  string username = request["name"];
+  
+  cout << "Register request from: " << username << endl;
+  
+  // Check if username already taken
+  if (registeredPlayers.find(username) != registeredPlayers.end()) {
+    json response = {
+      {"type", "REGISTER_RESPONSE"},
+      {"status", "ERROR"},
+      {"error", "Username already taken"}
+    };
+    sendMessage(client_fd, response);
+    cout << "Registration failed: Username taken" << endl;
+    return;
+  }
+  
+  // Register the player
+  registeredPlayers[username] = client_fd;
+  
+  json response = {
+    {"type", "REGISTER_RESPONSE"},
+    {"status", "SUCCESS"},
+    {"message", "Welcome " + username}
+  };
+  
+  sendMessage(client_fd, response);
+  cout << "Registration successful for: " << username << endl;
+  cout << "Total registered players: " << registeredPlayers.size() << endl;
 }
 
 void Server::handleClient() {
   try {
     while (true) {
-      json received = recieveMessage(client_fd);
-      cout << "Received: " << received.dump() << endl;
-      json response = {
-        {"status", "SUCCESS"},
-        {"echo", received}
-      };
-      // Echo back the received message
-      sendMessage(client_fd, received);
+      json request = receiveMessage(client_fd);
+      
+      cout << "\n=== Received Message ===" << endl;
+      cout << request.dump(2) << endl;
+      
+      string msgType = request["type"];
+      
+      if (msgType == "REGISTER") {
+        handleRegister(request);
+      } else {
+        cout << "Unknown message type: " << msgType << endl;
+      }
     }
   } catch (const std::exception& e) {
     cerr << "Client handling error: " << e.what() << endl;
@@ -131,35 +163,11 @@ void Server::handleClient() {
   }
 }
 
-int main()
-{
-  // creating socket
-  int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-
-  // specifying the address
-  sockaddr_in serverAddress;
-  serverAddress.sin_family = AF_INET;
-  serverAddress.sin_port = htons(8080);
-  serverAddress.sin_addr.s_addr = INADDR_ANY;
-
-  // binding socket.
-  bind(serverSocket, (struct sockaddr *)&serverAddress,
-       sizeof(serverAddress));
-
-  // listening to the assigned socket
-  listen(serverSocket, 5);
-
-  // accepting connection request
-  int clientSocket = accept(serverSocket, nullptr, nullptr);
-
-  // recieving data
-  char buffer[1024] = {0};
-  recv(clientSocket, buffer, sizeof(buffer), 0);
-  cout << "Message from client: " << buffer
-       << endl;
-
-  // closing the socket.
-  close(serverSocket);
-
+int main() {
+  cout << "=== Poker Server Starting ===" << endl;
+  
+  Server server;
+  server.handleClient();
+  
   return 0;
 }
