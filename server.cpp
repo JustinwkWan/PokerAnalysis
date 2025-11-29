@@ -3,6 +3,7 @@
 Server::Server()
 {
   // Create socket
+  nextGameID = 1;
   server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd == 0)
   {
@@ -76,6 +77,7 @@ MessageType Server::getMessageType(const std::string &typeStr)
     return MessageType::LIST_GAMES;
   return MessageType::UNKNOWN;
 }
+
 json Server::receiveMessage(int clientSocket)
 {
   uint32_t msg_length_net;
@@ -139,6 +141,9 @@ void Server::handleClient()
       case MessageType::CREATE_GAME:
         handleCreateGame(request);
         break;
+      case MessageType::JOIN_GAME:
+        handleJoinGame(request);
+        break;
       default:
         cout << "Unknown message type received." << endl;
         break;
@@ -156,8 +161,16 @@ void Server::handleRegister(const json &request)
 {
   string username = request["name"];
 
-  cout << "Register request from: " << username << endl;
-
+  // Check if username is empty
+  if(username.empty()) {
+    json response = {
+      {"type", "REGISTER_RESPONSE"},
+      {"status," "ERROR"},
+      {"error", "empty username"}
+    };
+    sendMessage(client_fd, response);
+    return; 
+  }
   // Check if username already taken
   if (registeredPlayers.find(username) != registeredPlayers.end())
   {
@@ -166,7 +179,6 @@ void Server::handleRegister(const json &request)
         {"status", "ERROR"},
         {"error", "Username already taken"}};
     sendMessage(client_fd, response);
-    cout << "Registration failed: Username taken" << endl;
     return;
   }
 
@@ -182,6 +194,7 @@ void Server::handleRegister(const json &request)
   cout << "Registration successful for: " << username << endl;
   cout << "Total registered players: " << registeredPlayers.size() << endl;
 }
+
 void Server::handleListGames(const json &request)
 {
   json response = {
@@ -195,71 +208,105 @@ void Server::handleListGames(const json &request)
     sendMessage(client_fd, response);
     return;
   }
-  
+
+  // Add each game to the response
   for (const auto &game : gameRooms)
   {
-    response["games"].push_back({{"game_id", game["game_id"]},
-                                 {"current_players", game["players"].size()},
-                                 {"max_players", game["max_players"]},
-                                 {"small_blind", game["small_blind"]},
-                                 {"big_blind", game["big_blind"]}});
+    response["games"].push_back({
+      {"game_id", game.second.gameID},
+      {"small_blind", game.second.smallBlind},
+      {"big_blind", game.second.bigBlind},
+      {"player_count", game.second.players.size()}
+    });
   }
+  
+  sendMessage(client_fd, response);
 }
 
 void Server::handleCreateGame(const json &request)
 {
-  json response = {
-      {"type", "CREATE_GAME_RESPONSE"},
-      {"status", "SUCCESS"},
-      {"message", "Game created successfully"}};
-  // Check if game ID already exists
-  for (auto x : gameRooms)
-  {
-    if (x["game_id"] == request["game_id"])
-    {
-      response["status"] = "ERROR";
-      response["error"] = "Game ID already exists";
-      cout << "Failed to create game: Game ID already exists" << endl;
-      sendMessage(client_fd, response);
-      return;
-    }
+  // Generate game ID automatically
+  int game_id;
+  if (!freeGameID.empty()) {
+    game_id = freeGameID.back();
+    freeGameID.pop_back();
+  } else {
+    game_id = nextGameID++;
   }
-  // Make sure blinds are positive
+  
+  // Validate blinds first
   if (request["small_blind"] <= 0 || request["big_blind"] <= 0)
   {
-    response["status"] = "ERROR";
-    response["error"] = "Blinds must be positive values";
+    json response = {
+      {"type", "CREATE_GAME_RESPONSE"},
+      {"status", "ERROR"},
+      {"error", "Blinds must be positive values"}
+    };
     sendMessage(client_fd, response);
     return;
   }
-  // small blind must be less than big blind
-  if (request["small_blind"] >= request["big_blind"])
+  
+  // Small blind must be less than big blind
+  if (request["small_blind"] > request["big_blind"])
   {
-    response["status"] = "ERROR";
-    response["error"] = "Small blind must be less than big blind";
+    json response = {
+      {"type", "CREATE_GAME_RESPONSE"},
+      {"status", "ERROR"},
+      {"error", "Small blind must be less than big blind"}
+    };
     sendMessage(client_fd, response);
     return;
   }
 
   // Check required parameters
-  if (request.contains("starting_chips") &&
-      request.contains("small_blind") &&
-      request.contains("big_blind") &&
-      request.contains("game_id"))
+  if (!request.contains("small_blind") || !request.contains("big_blind"))
   {
-    json newGame = {
-        {"game_id", request["game_id"]},
-        {"starting_chips", request["starting_chips"]},
-        {"small_blind", request["small_blind"]},
-        {"big_blind", request["big_blind"]},
-        {"players", json::array()}};
-    gameRooms.push_back(newGame);
-  }
-  else
-  {
-    response["status"] = "ERROR";
-    response["error"] = "Missing game parameters";
+    json response = {
+      {"type", "CREATE_GAME_RESPONSE"},
+      {"status", "ERROR"},
+      {"error", "Missing game parameters"}
+    };
+    sendMessage(client_fd, response);
     cout << "Failed to create game: Missing parameters" << endl;
+    return;
   }
+
+  // Create GameRoom struct
+  GameRoom newRoom;
+  newRoom.gameID = game_id;
+  newRoom.smallBlind = request["small_blind"];
+  newRoom.bigBlind = request["big_blind"];
+  // newRoom.players is already empty
+  
+  gameRooms[game_id] = newRoom;
+  
+  json response = {
+    {"type", "CREATE_GAME_RESPONSE"},
+    {"status", "SUCCESS"},
+    {"game_id", game_id},
+    {"message", "Game created successfully"}
+  };
+  
+  sendMessage(client_fd, response);
+  cout << "Game created with ID: " << game_id << endl;
+}
+
+void Server::handleJoinGame(const json &request) 
+{
+  int game_id = request["game_id"];
+  
+  // Efficient O(log n) lookup
+  auto it = gameRooms.find(game_id);
+  
+  json response = {{"type", "JOIN_GAME_RESPONSE"}};
+  
+  if (it != gameRooms.end()) {
+    response["status"] = "SUCCESS";
+    response["message"] = "Joined game successfully";
+  } else {
+    response["status"] = "ERROR";
+    response["error"] = "Game room not found";
+  }
+  
   sendMessage(client_fd, response);
 }

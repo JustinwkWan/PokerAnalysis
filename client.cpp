@@ -87,7 +87,7 @@ bool client::Register(char *name)
   
   if (response["status"] == "SUCCESS")
   {
-    cout << "Registration successful!" << endl;
+    cout << "Successfully registered " << name << endl;
     registered = true;
     username = name;
     return true;
@@ -115,12 +115,13 @@ void client::ListGames()
   cout << "Available Games:" << endl;
   for (const auto& game : response["games"]) {
     cout << "Game ID: " << game["game_id"] 
-    << ", Players: " << game["current_players"]
-    << "/" << game["max_players"] << endl; // add blinds/other info as needed
+    << ", Players: " << game["current_players"] 
+    << ", Small/Big blind: " << game["small_blind"] 
+    << "/" << game["big_blind"] << endl; 
   }
 }
 
-void client::createGame(const int startingChips, 
+void client::createGame(
   const int smallBlind, 
   const int bigBlind,
   const int GameID)
@@ -128,7 +129,6 @@ void client::createGame(const int startingChips,
   // TODO: Create a GameID generator to avoid collisions
   json request = {
       {"type", "CREATE_GAME"},
-      {"starting_chips", startingChips},
       {"small_blind", smallBlind},
       {"big_blind", bigBlind},
       {"game_id", GameID}

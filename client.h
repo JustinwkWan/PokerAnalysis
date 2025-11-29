@@ -49,8 +49,7 @@ public:
   ~client();
   bool Register(char *name);
   void ListGames();
-  void createGame(const int startingChips, 
-  const int smallBlind, 
+  void createGame(const int smallBlind, 
   const int bigBlind,
   const int GameID);
   void joinGame(int gameID);
