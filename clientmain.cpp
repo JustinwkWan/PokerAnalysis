@@ -25,8 +25,8 @@ void testListGame(client& myClient) {
 
 void testJoinGame(client& myClient) {
   cout << "\nTest: Join Games" << endl;
-  myClient.joinGame((char*)"PlayerOne",1);
-  myClient.joinGame((char*)"PlayerTwo",1);
+  myClient.joinGame((char*)"PlayerOne",1, 1000);
+  myClient.joinGame((char*)"PlayerTwo",1, 2000);
   myClient.ListGames();
 }
 

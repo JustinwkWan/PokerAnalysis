@@ -57,25 +57,25 @@ Server::~Server()
 
 MessageType Server::getMessageType(const std::string &typeStr)
 {
-  if (typeStr == "LOGIN")
-    return MessageType::LOGIN;
-  if (typeStr == "REGISTER")
-    return MessageType::REGISTER;
-  if (typeStr == "CREATE_GAME")
-    return MessageType::CREATE_GAME;
-  if (typeStr == "JOIN_GAME")
-    return MessageType::JOIN_GAME;
-  if (typeStr == "EXIT_GAME")
-    return MessageType::EXIT_GAME;
-  if (typeStr == "UNREGISTER")
-    return MessageType::UNREGISTER;
-  if (typeStr == "START_GAME")
-    return MessageType::START_GAME;
-  if (typeStr == "PLAY_TURN")
-    return MessageType::PLAY_TURN;
-  if (typeStr == "LIST_GAMES")
-    return MessageType::LIST_GAMES;
+  if (typeStr == "LOGIN")              return MessageType::LOGIN;
+  if (typeStr == "REGISTER")           return MessageType::REGISTER;
+  if (typeStr == "CREATE_GAME")        return MessageType::CREATE_GAME;
+  if (typeStr == "JOIN_GAME")          return MessageType::JOIN_GAME;
+  if (typeStr == "EXIT_GAME")          return MessageType::EXIT_GAME;
+  if (typeStr == "UNREGISTER")         return MessageType::UNREGISTER;
+  if (typeStr == "START_GAME")         return MessageType::START_GAME;
+  if (typeStr == "PLAY_TURN")          return MessageType::PLAY_TURN;
+  if (typeStr == "LIST_GAMES")         return MessageType::LIST_GAMES;
   return MessageType::UNKNOWN;
+}
+
+ActionType Server::getActionType(const std::string &typeStr) {
+  if(typeStr == "ALL_IN")       return ActionType::ALL_IN;
+  if(typeStr == "FOLD")         return ActionType::FOLD;
+  if(typeStr == "CALL")         return ActionType::CALL;
+  if(typeStr == "RAISE")        return ActionType::RAISE;
+  if(typeStr == "BET")          return ActionType::BET;
+  return ActionType::UNKNOWN;
 }
 
 json Server::receiveMessage(int clientSocket)
@@ -305,8 +305,7 @@ void Server::handleJoinGame(const json &request)
   string username = request["username"];
   
   json response = {{"type", "JOIN_GAME_RESPONSE"}};
-  
-  // O(log n) lookup instead of O(n) loop
+
   if (registeredPlayers.find(username) == registeredPlayers.end()) {
     response["status"] = "ERROR";
     response["error"] = "Invalid Player ID";
@@ -314,7 +313,6 @@ void Server::handleJoinGame(const json &request)
     return;
   }
   
-  // O(1) check if player is already in a game
   if (playerToGameID.find(username) != playerToGameID.end()) {
     response["status"] = "ERROR";
     response["error"] = "Player already in a game";
@@ -322,7 +320,8 @@ void Server::handleJoinGame(const json &request)
     return;
   }
   
-  // O(log n) lookup for game room
+
+
   auto it = gameRooms.find(game_id);
   
   if (it == gameRooms.end()) {
@@ -331,8 +330,7 @@ void Server::handleJoinGame(const json &request)
     sendMessage(client_fd, response);
     return;
   }
-  
-  // Check max players
+
   if (it->second.players.size() >= MAX_PLAYERS) {
     response["status"] = "ERROR";
     response["error"] = "Game room is full";
@@ -340,8 +338,14 @@ void Server::handleJoinGame(const json &request)
     return;
   }
   
+  if(request["starting_stack"] <= 0) {
+    response["status"] = "ERROR";
+    response["error"] = "starting_stack must be positive";
+    sendMessage(client_fd, response);
+    return;
+  }
   // Add player to game room
-  Players newPlayer;
+  Player newPlayer;
   newPlayer.username = username;
   newPlayer.server_fd = client_fd;
   newPlayer.gameRoomID = game_id;
@@ -349,10 +353,10 @@ void Server::handleJoinGame(const json &request)
   // Add to vector and update index map
   int playerIdx = it->second.players.size();
   it->second.players.push_back(newPlayer);
-  it->second.playerIndex[username] = playerIdx; // O(1) insert
+  it->second.playerIndex[username] = playerIdx; 
   
   // Update player-to-game mapping
-  playerToGameID[username] = game_id; // O(1) insert
+  playerToGameID[username] = game_id; 
   
   response["status"] = "SUCCESS";
   response["message"] = "Joined game successfully";
@@ -367,7 +371,6 @@ void Server::handleExitGame(const json &request)
   
   json response = {{"type", "EXIT_GAME_RESPONSE"}};
   
-  // O(1) lookup to find which game the player is in
   auto playerGameIt = playerToGameID.find(username);
   
   if (playerGameIt == playerToGameID.end()) {
@@ -409,11 +412,11 @@ void Server::handleExitGame(const json &request)
   
   room.playerIndex.erase(username);
   
-  playerToGameID.erase(username); // O(1)
+  playerToGameID.erase(username); 
   
   if (room.players.empty()) {
-    freeGameID.push_back(game_id); // Recycle game ID
-    gameRooms.erase(game_id); // O(log n)
+    freeGameID.push_back(game_id);
+    gameRooms.erase(game_id);
   }
   
   response["status"] = "SUCCESS";
@@ -446,10 +449,62 @@ void Server::handleUnregister(const json &request)
   }
   
   // Remove player
-  registeredPlayers.erase(it); // O(log n)
+  registeredPlayers.erase(it);
   
   response["status"] = "SUCCESS";
   response["message"] = "Unregistered successfully";
   
   sendMessage(client_fd, response);
 }
+
+void Server::handleAction(const json& request) {
+  string username = request["username"];
+  int game_id = request["game_id"];
+  string actionStr = request["action"];
+  int amount = request.value("amount", 0); 
+
+
+  json response = {{"type", "PLAY_TURN_RESPONSE"}};
+
+  auto playerInGame = playerToGameID.find(username);
+  if(playerInGame == playerToGameID.end() || playerInGame->second != game_id) {
+    response["status"] = "ERROR";
+    response["error"] = "Player not in session";
+    sendMessage(client_fd, response);
+  }
+
+  if(amount < 0) {
+    response["status"] = "ERROR";
+    response["error"] = "Can not bet a negative amount";
+  }
+
+  auto roomIt = gameRooms.find(game_id);
+  if (roomIt == gameRooms.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Game not found";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  GameRoom& room = roomIt->second;
+  
+  // Get player index
+  auto playerIdxIt = room.playerIndex.find(username);
+  if (playerIdxIt == room.playerIndex.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Player not found in game";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  int playerIdx = playerIdxIt->second;
+  Player& player = room.players[playerIdx];
+
+  ActionType action = getActionType(actionStr);
+
+  switch(action) {
+    case ActionType::FOLD:
+
+
+  }
+} 

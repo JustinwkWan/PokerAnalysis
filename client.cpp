@@ -142,18 +142,20 @@ void client::createGame(
   }
 }
 
-void client::joinGame(char* username, int gameID)
+void client::joinGame(char* username, int gameID, int startingStack)
 {
   json request = {
       {"type", "JOIN_GAME"},
       {"username", username},
-      {"game_id", gameID}
+      {"game_id", gameID},
+      {"starting_stack", startingStack}
   };
 
   if(!registered) {
     cout << "You must register before joining a game." << endl;
     return;
   }
+
   sendMessage(request);
   json response = recieveMessage();
 
@@ -196,12 +198,26 @@ void client::unRegister(char* username) {
   }
 }
 
-void client::StartGame(int gameID)
-{
-  // TODO: Implement
-}
+// void client::StartGame(int gameID)
+// {
+//   // TODO: Implement
+// }
 
-void client::PlayTurn(int gameID, int turnData)
-{
-  // TODO: Implement
+void client::PlayTurn(const char* username, int gameID, const string& action, int amount) {
+  json request = {
+    {"type", "PLAY_TURN"},
+    {"username", username},
+    {"game_id", gameID},
+    {"action", action},
+    {"amount", amount}
+  };
+
+  sendMessage(request);
+  json response = recieveMessage();
+
+  if(response["status"] == "SUCCESS") {
+    cout << username << " has done a " << action; 
+  } else {
+    cout << "Invalid action" << endl; 
+  }
 }

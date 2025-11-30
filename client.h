@@ -51,12 +51,11 @@ public:
   void ListGames();
   void createGame(const int smallBlind, 
   const int bigBlind);
-  void joinGame(char* username, int gameID);
+  void joinGame(char* username, int gameID, int startingStack);
   void exitGame(char *username);
   void unRegister(char *username);
   void StartGame(int gameID);
-  void PlayTurn(int gameID, int turnData);
-
+  void PlayTurn(const char* username, int gameID, const string& action, int turnData);
 private:
   int server_fd;
   std::string username;

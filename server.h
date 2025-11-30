@@ -30,7 +30,16 @@ enum class MessageType
   UNKNOWN 
 };
 
-struct Players {
+enum class ActionType {
+  BET,
+  FOLD,
+  ALL_IN,
+  CALL,
+  RAISE,
+  UNKNOWN
+};
+
+struct Player {
   std::string username;
   int server_fd;
   int gameRoomID; 
@@ -68,6 +77,8 @@ private:
   void handleUnregister(const json& request);
   json receiveMessage(int clientSocket);
   void sendMessage(int clientSocket, const json& data);
+  void handleAction(const json& request);
   MessageType getMessageType(const std::string& typeStr);
+  ActionType getActionType(const std::string& typeStr);
 };
 #endif // SERVER_H
