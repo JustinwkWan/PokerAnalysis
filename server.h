@@ -1,5 +1,6 @@
 #ifndef SERVER_H
 #define SERVER_H
+
 #include <string>
 #include <map>
 #include <unordered_map>
@@ -11,8 +12,10 @@
 #include <unistd.h>
 #include <vector>
 #include <arpa/inet.h>
+
 using namespace std;
 using json = nlohmann::json;
+
 const int MAX_PLAYERS = 9;
 
 enum class MessageType
@@ -36,6 +39,7 @@ enum class ActionType {
   ALL_IN,
   CALL,
   RAISE,
+  CHECK,
   UNKNOWN
 };
 
@@ -43,42 +47,52 @@ struct Player {
   std::string username;
   int server_fd;
   int gameRoomID; 
+  bool hasHand; 
+  int chips;
+  int currentBet; 
+  bool isActive;
 };
 
 struct GameRoom {
   int gameID; 
   int smallBlind;
   int bigBlind;
-  std::vector<Players> players;
-  std::unordered_map<string, int> playerIndex; // NEW: username -> index in players vector
+  std::vector<Player> players;
+  std::unordered_map<string, int> playerIndex; // username -> index in players vector
+  int currentPlayerIndex; 
+  int Pot; 
+  int currentBet; 
+  int buttonPosition; 
+  std::string gameStages; // Preflop, Flop, Turn, River
 };
 
 class Server {
 public:
   Server();
   ~Server();
-  void handleClient();
+  void run();  // NEW: Main loop to accept connections
   
 private:
   int server_fd;
-  int client_fd;
   std::vector<int> freeGameID;
   int nextGameID;
   std::map<int, GameRoom> gameRooms; 
   std::map<std::string, int> registeredPlayers;
-  
   std::unordered_map<string, int> playerToGameID; // username -> game_id
   
-  void handleRegister(const json& request);
-  void handleListGames(const json& request);
-  void handleCreateGame(const json& request);
-  void handleJoinGame(const json& request);
-  void handleExitGame(const json& request);
-  void handleUnregister(const json& request);
+  void handleClient(int client_fd);  // MODIFIED: Now takes client_fd as parameter
+  void handleRegister(const json& request, int client_fd, std::string& client_username);
+  void handleListGames(const json& request, int client_fd);
+  void handleCreateGame(const json& request, int client_fd);
+  void handleJoinGame(const json& request, int client_fd);
+  void handleExitGame(const json& request, int client_fd);
+  void handleUnregister(const json& request, int client_fd, std::string& client_username);
+  bool handleAction(const json& request, int client_fd);
+  
   json receiveMessage(int clientSocket);
   void sendMessage(int clientSocket, const json& data);
-  void handleAction(const json& request);
   MessageType getMessageType(const std::string& typeStr);
   ActionType getActionType(const std::string& typeStr);
 };
+
 #endif // SERVER_H
