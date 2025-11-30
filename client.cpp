@@ -103,6 +103,7 @@ void client::ListGames()
 {
   json request = {
       {"type", "LIST_GAMES"},
+      
   };
 
   sendMessage(request);
@@ -115,7 +116,7 @@ void client::ListGames()
   cout << "Available Games:" << endl;
   for (const auto& game : response["games"]) {
     cout << "Game ID: " << game["game_id"] 
-    << ", Players: " << game["current_players"] 
+    << ", Players: " << game["player_count"] 
     << ", Small/Big blind: " << game["small_blind"] 
     << "/" << game["big_blind"] << endl; 
   }
@@ -123,31 +124,29 @@ void client::ListGames()
 
 void client::createGame(
   const int smallBlind, 
-  const int bigBlind,
-  const int GameID)
+  const int bigBlind)
 {
-  // TODO: Create a GameID generator to avoid collisions
   json request = {
       {"type", "CREATE_GAME"},
       {"small_blind", smallBlind},
-      {"big_blind", bigBlind},
-      {"game_id", GameID}
+      {"big_blind", bigBlind}
   };
 
   sendMessage(request);
   json response = recieveMessage();
 
   if (response["status"] == "SUCCESS") {
-    cout << "Game created successfully with Game ID: " << GameID << endl;
+    cout << "Game created successfully with Game ID: " << response["game_id"] << endl;
   } else {
     cout << "Failed to create game: " << response["error"] << endl;
   }
 }
 
-void client::joinGame(int gameID)
+void client::joinGame(char* username, int gameID)
 {
   json request = {
       {"type", "JOIN_GAME"},
+      {"username", username},
       {"game_id", gameID}
   };
 
@@ -159,38 +158,41 @@ void client::joinGame(int gameID)
   json response = recieveMessage();
 
   if (response["status"] == "SUCCESS") {
-    cout << "Joined game ID: " << gameID << " successfully." << endl;
+    cout << "Player: " << username << " joined game ID: " << gameID << " successfully." << endl;
   } else {
     cout << "Failed to join game: " << response["error"] << endl;
   }
 }
 
-void client::exitGame()
+void client::exitGame(char* username)
 {
   json request = {
       {"type", "EXIT_GAME"},
+      {"username", username}
   };
 
   sendMessage(request);
   json response = recieveMessage();
 
   if (response["status"] == "SUCCESS") {
-    cout << "Exited game successfully." << endl;
+    cout << username << " exited game successfully." << endl;
   } else {
     cout << "Failed to exit game: " << response["error"] << endl;
   }
 }
 
-void client::exitRoom() {
+void client::unRegister(char* username) {
   json request = {
-      {"type", "EXIT_ROOM"},
+    {"type", "UNREGISTER"},
+    {"username", username}
   };
   sendMessage(request);
   json response = recieveMessage();
+
   if (response["status"] == "SUCCESS") {
-    cout << "Exited room successfully." << endl;
+    cout << username << " unregistered game successfully." << endl;
   } else {
-    cout << "Failed to exit room: " << response["error"] << endl;
+    cout << "Failed to unRegister game: " << response["error"] << endl;
   }
 }
 

@@ -144,6 +144,12 @@ void Server::handleClient()
       case MessageType::JOIN_GAME:
         handleJoinGame(request);
         break;
+      case MessageType::EXIT_GAME:
+        handleExitGame(request);
+        break;
+      case MessageType::UNREGISTER:
+        handleUnregister(request);
+        break;
       default:
         cout << "Unknown message type received." << endl;
         break;
@@ -199,12 +205,14 @@ void Server::handleListGames(const json &request)
 {
   json response = {
       {"type", "LIST_GAMES_RESPONSE"},
+      {"status", "SUCCESS"},
       {"games", json::array()}
   };
 
   if(gameRooms.empty())
   {
     response["message"] = "No active game rooms available.";
+    response["status"] = "ERROR";
     sendMessage(client_fd, response);
     return;
   }
@@ -294,19 +302,154 @@ void Server::handleCreateGame(const json &request)
 void Server::handleJoinGame(const json &request) 
 {
   int game_id = request["game_id"];
-  
-  // Efficient O(log n) lookup
-  auto it = gameRooms.find(game_id);
+  string username = request["username"];
   
   json response = {{"type", "JOIN_GAME_RESPONSE"}};
   
-  if (it != gameRooms.end()) {
-    response["status"] = "SUCCESS";
-    response["message"] = "Joined game successfully";
-  } else {
+  // O(log n) lookup instead of O(n) loop
+  if (registeredPlayers.find(username) == registeredPlayers.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Invalid Player ID";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // O(1) check if player is already in a game
+  if (playerToGameID.find(username) != playerToGameID.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Player already in a game";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // O(log n) lookup for game room
+  auto it = gameRooms.find(game_id);
+  
+  if (it == gameRooms.end()) {
     response["status"] = "ERROR";
     response["error"] = "Game room not found";
+    sendMessage(client_fd, response);
+    return;
   }
+  
+  // Check max players
+  if (it->second.players.size() >= MAX_PLAYERS) {
+    response["status"] = "ERROR";
+    response["error"] = "Game room is full";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // Add player to game room
+  Players newPlayer;
+  newPlayer.username = username;
+  newPlayer.server_fd = client_fd;
+  newPlayer.gameRoomID = game_id;
+  
+  // Add to vector and update index map
+  int playerIdx = it->second.players.size();
+  it->second.players.push_back(newPlayer);
+  it->second.playerIndex[username] = playerIdx; // O(1) insert
+  
+  // Update player-to-game mapping
+  playerToGameID[username] = game_id; // O(1) insert
+  
+  response["status"] = "SUCCESS";
+  response["message"] = "Joined game successfully";
+  response["player_count"] = it->second.players.size();
+
+  sendMessage(client_fd, response);
+}
+
+void Server::handleExitGame(const json &request) 
+{
+  string username = request["username"];
+  
+  json response = {{"type", "EXIT_GAME_RESPONSE"}};
+  
+  // O(1) lookup to find which game the player is in
+  auto playerGameIt = playerToGameID.find(username);
+  
+  if (playerGameIt == playerToGameID.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Player not in any game";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  int game_id = playerGameIt->second;
+  auto roomIt = gameRooms.find(game_id); 
+  
+  if (roomIt == gameRooms.end()) {
+    playerToGameID.erase(username);
+    response["status"] = "ERROR";
+    response["error"] = "Game room not found";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  GameRoom& room = roomIt->second;
+  auto idIt = room.playerIndex.find(username);
+
+  if(idIt == room.playerIndex.end()) {
+    playerToGameID.erase(username);
+    response["status"] = "ERROR";
+    response["error"] = "Player not found in game room";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  int playerIdx = idIt->second;
+  
+  if (playerIdx < room.players.size() - 1) {
+    room.players[playerIdx] = room.players.back();
+    room.playerIndex[room.players[playerIdx].username] = playerIdx;
+  }
+  room.players.pop_back();
+  
+  room.playerIndex.erase(username);
+  
+  playerToGameID.erase(username); // O(1)
+  
+  if (room.players.empty()) {
+    freeGameID.push_back(game_id); // Recycle game ID
+    gameRooms.erase(game_id); // O(log n)
+  }
+  
+  response["status"] = "SUCCESS";
+  response["message"] = "Exited game successfully";
+  
+  sendMessage(client_fd, response);
+}
+
+void Server::handleUnregister(const json &request)
+{
+  string username = request["username"];
+  
+  json response = {{"type", "UNREGISTER_RESPONSE"}};
+  
+  auto it = registeredPlayers.find(username);
+  
+  if (it == registeredPlayers.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Player not registered";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // Check if player is in a game
+  if (playerToGameID.find(username) != playerToGameID.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Please exit game before unregistering";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // Remove player
+  registeredPlayers.erase(it); // O(log n)
+  
+  response["status"] = "SUCCESS";
+  response["message"] = "Unregistered successfully";
   
   sendMessage(client_fd, response);
 }

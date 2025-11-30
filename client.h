@@ -50,12 +50,10 @@ public:
   bool Register(char *name);
   void ListGames();
   void createGame(const int smallBlind, 
-  const int bigBlind,
-  const int GameID);
-  void joinGame(int gameID);
-  void exitGame();
-  void exitRoom();
-  void unRegister(char *name); // Dont know if needed 
+  const int bigBlind);
+  void joinGame(char* username, int gameID);
+  void exitGame(char *username);
+  void unRegister(char *username);
   void StartGame(int gameID);
   void PlayTurn(int gameID, int turnData);
 
