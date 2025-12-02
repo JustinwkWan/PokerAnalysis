@@ -235,25 +235,200 @@ HandRank Poker::evaluateHand(const std::vector<Card>& holeCards) const {
     return HandRank::HighCard;
 }
 
-// Determine winner among multiple players (returns winner index)
-int Poker::determineWinner(const std::vector<std::vector<Card>>& playerHands) const {
-    if(playerHands.empty()) {
-        return -1;
+// Compare two hand values
+bool Poker::HandValue::operator>(const HandValue& other) const {
+    // First compare hand rank
+    if(rank != other.rank) {
+        return rank > other.rank;
     }
     
-    int bestPlayer = 0;
-    HandRank bestRank = evaluateHand(playerHands[0]);
-    
-    for(size_t i = 1; i < playerHands.size(); ++i) {
-        HandRank currentRank = evaluateHand(playerHands[i]);
-        
-        if(currentRank > bestRank) {
-            bestRank = currentRank;
-            bestPlayer = i;
+    // Same rank, compare values (kickers)
+    for(size_t i = 0; i < std::min(values.size(), other.values.size()); i++) {
+        if(values[i] != other.values[i]) {
+            return values[i] > other.values[i];
         }
     }
     
-    return bestPlayer;
+    // All values equal - true tie
+    return false;
+}
+
+bool Poker::HandValue::operator==(const HandValue& other) const {
+    if(rank != other.rank) return false;
+    if(values.size() != other.values.size()) return false;
+    
+    for(size_t i = 0; i < values.size(); i++) {
+        if(values[i] != other.values[i]) return false;
+    }
+    
+    return true;
+}
+
+// Detailed hand evaluation with tie-breaking values
+Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards) const {
+    HandValue result;
+    
+    // Combine hole cards with community cards
+    std::vector<Card> allCards = holeCards;
+    allCards.insert(allCards.end(), communityCards.begin(), communityCards.end());
+    
+    if(allCards.size() < 5) {
+        result.rank = HandRank::HighCard;
+        return result;
+    }
+    
+    // Count ranks
+    auto rankCounts = countRanks(allCards);
+    
+    // Find pairs, trips, quads
+    std::vector<int> quads;
+    std::vector<int> trips;
+    std::vector<int> pairs;
+    std::vector<int> singles;
+    
+    for(const auto& pair : rankCounts) {
+        int rankValue = static_cast<int>(pair.first);
+        if(pair.second == 4) {
+            quads.push_back(rankValue);
+        } else if(pair.second == 3) {
+            trips.push_back(rankValue);
+        } else if(pair.second == 2) {
+            pairs.push_back(rankValue);
+        } else if(pair.second == 1) {
+            singles.push_back(rankValue);
+        }
+    }
+    
+    // Sort in descending order for tie-breaking
+    std::sort(quads.rbegin(), quads.rend());
+    std::sort(trips.rbegin(), trips.rend());
+    std::sort(pairs.rbegin(), pairs.rend());
+    std::sort(singles.rbegin(), singles.rend());
+    
+    bool flush = isFlush(allCards);
+    bool straight = isStraight(allCards);
+    
+    // Determine hand rank and values for comparison
+    if(straight && flush) {
+        result.rank = HandRank::StraightFlush;
+        // Get highest card in straight for comparison
+        std::vector<int> ranks;
+        for(const auto& card : allCards) {
+            ranks.push_back(static_cast<int>(card.rank));
+        }
+        std::sort(ranks.rbegin(), ranks.rend());
+        result.values.push_back(ranks[0]);  // High card of straight
+    }
+    else if(!quads.empty()) {
+        result.rank = HandRank::FourOfAKind;
+        result.values.push_back(quads[0]);  // Quad rank
+        // Add best kicker
+        if(!singles.empty()) result.values.push_back(singles[0]);
+        else if(!trips.empty()) result.values.push_back(trips[0]);
+        else if(!pairs.empty()) result.values.push_back(pairs[0]);
+    }
+    else if(!trips.empty() && !pairs.empty()) {
+        result.rank = HandRank::FullHouse;
+        result.values.push_back(trips[0]);  // Trip rank
+        result.values.push_back(pairs[0]);   // Pair rank
+    }
+    else if(flush) {
+        result.rank = HandRank::Flush;
+        // Add all 5 highest cards for comparison
+        std::vector<int> ranks;
+        for(const auto& card : allCards) {
+            ranks.push_back(static_cast<int>(card.rank));
+        }
+        std::sort(ranks.rbegin(), ranks.rend());
+        for(int i = 0; i < 5 && i < (int)ranks.size(); i++) {
+            result.values.push_back(ranks[i]);
+        }
+    }
+    else if(straight) {
+        result.rank = HandRank::Straight;
+        // Get highest card in straight
+        std::vector<int> ranks;
+        for(const auto& card : allCards) {
+            ranks.push_back(static_cast<int>(card.rank));
+        }
+        std::sort(ranks.rbegin(), ranks.rend());
+        result.values.push_back(ranks[0]);
+    }
+    else if(!trips.empty()) {
+        result.rank = HandRank::ThreeOfAKind;
+        result.values.push_back(trips[0]);  // Trip rank
+        // Add top 2 kickers
+        int kickersAdded = 0;
+        for(int s : singles) {
+            if(kickersAdded >= 2) break;
+            result.values.push_back(s);
+            kickersAdded++;
+        }
+    }
+    else if(pairs.size() >= 2) {
+        result.rank = HandRank::TwoPair;
+        result.values.push_back(pairs[0]);  // Higher pair
+        result.values.push_back(pairs[1]);  // Lower pair
+        // Add best kicker
+        if(!singles.empty()) result.values.push_back(singles[0]);
+        else if(pairs.size() > 2) result.values.push_back(pairs[2]);
+    }
+    else if(pairs.size() == 1) {
+        result.rank = HandRank::OnePair;
+        result.values.push_back(pairs[0]);  // Pair rank
+        // Add top 3 kickers
+        int kickersAdded = 0;
+        for(int s : singles) {
+            if(kickersAdded >= 3) break;
+            result.values.push_back(s);
+            kickersAdded++;
+        }
+    }
+    else {
+        result.rank = HandRank::HighCard;
+        // Add top 5 cards
+        int cardsAdded = 0;
+        for(int s : singles) {
+            if(cardsAdded >= 5) break;
+            result.values.push_back(s);
+            cardsAdded++;
+        }
+    }
+    
+    return result;
+}
+
+// Determine winners among multiple players (returns winner indices - can be multiple for ties!)
+std::vector<int> Poker::determineWinners(const std::vector<std::vector<Card>>& playerHands) const {
+    std::vector<int> winners;
+    
+    if(playerHands.empty()) {
+        return winners;
+    }
+    
+    // Evaluate all hands
+    std::vector<HandValue> handValues;
+    for(const auto& hand : playerHands) {
+        handValues.push_back(evaluateHandDetailed(hand));
+    }
+    
+    // Find the best hand
+    HandValue bestHand = handValues[0];
+    winners.push_back(0);
+    
+    for(size_t i = 1; i < handValues.size(); i++) {
+        if(handValues[i] > bestHand) {
+            // New best hand found
+            bestHand = handValues[i];
+            winners.clear();
+            winners.push_back(i);
+        } else if(handValues[i] == bestHand) {
+            // Tie - multiple winners!
+            winners.push_back(i);
+        }
+    }
+    
+    return winners;
 }
 
 // Handle blinds (small blind and big blind)

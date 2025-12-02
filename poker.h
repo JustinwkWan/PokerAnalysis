@@ -82,7 +82,17 @@ public:
     
     // Hand evaluation
     HandRank evaluateHand(const std::vector<Card>& holeCards) const;
-    int determineWinner(const std::vector<std::vector<Card>>& playerHands) const;
+    std::vector<int> determineWinners(const std::vector<std::vector<Card>>& playerHands) const;
+    
+    // Detailed hand evaluation (returns rank + comparison values)
+    struct HandValue {
+        HandRank rank;
+        std::vector<int> values;  // For tie-breaking (sorted high to low)
+        
+        bool operator>(const HandValue& other) const;
+        bool operator==(const HandValue& other) const;
+    };
+    HandValue evaluateHandDetailed(const std::vector<Card>& holeCards) const;
     
     // Poker mechanics
     void handleBlinds();
