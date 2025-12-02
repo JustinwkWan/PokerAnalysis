@@ -443,7 +443,7 @@ void Server::handleJoinGame(const json &request, int client_fd)
   }
 
   // Add player to game room
-  Player newPlayer;
+  Player newPlayer; 
   newPlayer.username = username;
   newPlayer.server_fd = client_fd;
   newPlayer.gameRoomID = game_id;

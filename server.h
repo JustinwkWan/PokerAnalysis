@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <vector>
 #include <arpa/inet.h>
-#include "Poker.h"
+#include "poker.h"
 
 using namespace std;
 using json = nlohmann::json;
