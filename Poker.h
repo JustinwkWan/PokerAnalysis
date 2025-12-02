@@ -1,9 +1,8 @@
-
+#ifndef POKER_H
 #define POKER_H
-#ifdef POKER_H
-
 
 #include <vector>
+#include <random>
 
 enum class Suit {
     Hearts,
@@ -36,20 +35,33 @@ enum class HandRank {
     Straight,
     Flush,
     FullHouse,
-    FourOfAKing,
+    FourOfAKind,
     StraightFlush,
     RoyalFlush
 };
 
+struct Card {
+    Rank rank; 
+    Suit suit;
+    
+    Card(Rank r, Suit s) : rank(r), suit(s) {}
+};
+
 class Poker {
-  private: 
-    std::vector<Rank> ranks;
-    std::vector<Suit> suits;
-  public: 
+private: 
+    std::vector<Card> cards; 
+    
+public: 
     Poker();
     ~Poker();
     HandRank evaluateHand(const std::vector<Rank>& handRanks, const std::vector<Suit>& handSuits);
-    
+    void dealCards();
+    void dealFlop();
+    void dealTurn();
+    void dealRiver();
+    void determineWinner();
+    void handleBlinds();
+    void getGameState();
 };
 
 #endif

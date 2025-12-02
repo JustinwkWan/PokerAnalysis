@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <vector>
 #include <arpa/inet.h>
+#include "Poker.h"
 
 using namespace std;
 using json = nlohmann::json;
@@ -51,6 +52,8 @@ struct Player {
   int chips;
   int currentBet; 
   bool isActive;
+  Card holecard1; 
+  Card holecard2; 
 };
 
 struct GameRoom {
@@ -59,18 +62,20 @@ struct GameRoom {
   int bigBlind;
   std::vector<Player> players;
   std::unordered_map<string, int> playerIndex; // username -> index in players vector
+  Poker* poker = new Poker();
   int currentPlayerIndex; 
   int Pot; 
   int currentBet; 
   int buttonPosition; 
   std::string gameStages; // Preflop, Flop, Turn, River
+  vector<Card> communityCards; 
 };
 
 class Server {
 public:
   Server();
   ~Server();
-  void run();  // NEW: Main loop to accept connections
+  void run();  
   
 private:
   int server_fd;

@@ -281,8 +281,6 @@ void Server::handleRegister(const json &request, int client_fd, std::string &cli
       {"message", "Welcome " + username}};
 
   sendMessage(client_fd, response);
-  cout << "Registration successful for: " << username << " (fd=" << client_fd << ")" << endl;
-  cout << "Total registered players: " << registeredPlayers.size() << endl;
 }
 
 void Server::handleListGames(const json &request, int client_fd)
