@@ -4,15 +4,16 @@
 #include <string>
 #include <map>
 #include <unordered_map>
-#include "json.hpp"
-#include <cstring>
+#include <vector>
 #include <iostream>
+#include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <unistd.h>
-#include <vector>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include "json.hpp"
 #include "poker.h"
+#include <memory>
 
 using namespace std;
 using json = nlohmann::json;
@@ -52,8 +53,7 @@ struct Player {
   int chips;
   int currentBet; 
   bool isActive;
-  Card holecard1; 
-  Card holecard2; 
+  std::vector<Card> holeCards;  // Changed: Use vector instead of two separate cards
 };
 
 struct GameRoom {
@@ -62,13 +62,12 @@ struct GameRoom {
   int bigBlind;
   std::vector<Player> players;
   std::unordered_map<string, int> playerIndex; // username -> index in players vector
-  Poker* poker = new Poker();
+  std::unique_ptr<Poker> poker;  // Use smart pointer for automatic memory management
   int currentPlayerIndex; 
   int Pot; 
   int currentBet; 
   int buttonPosition; 
-  std::string gameStages; // Preflop, Flop, Turn, River
-  vector<Card> communityCards; 
+  std::string gameStages; // WAITING, PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
 };
 
 class Server {
@@ -85,17 +84,29 @@ private:
   std::map<std::string, int> registeredPlayers;
   std::unordered_map<string, int> playerToGameID; // username -> game_id
   
-  void handleClient(int client_fd);  // MODIFIED: Now takes client_fd as parameter
+  // Client handling
+  void handleClient(int client_fd);
+  
+  // Message handlers
   void handleRegister(const json& request, int client_fd, std::string& client_username);
   void handleListGames(const json& request, int client_fd);
   void handleCreateGame(const json& request, int client_fd);
   void handleJoinGame(const json& request, int client_fd);
   void handleExitGame(const json& request, int client_fd);
   void handleUnregister(const json& request, int client_fd, std::string& client_username);
+  void handleStartGame(const json& request, int client_fd);  // Added: Start game handler
   bool handleAction(const json& request, int client_fd);
   
+  // Game flow methods
+  void advanceGameStage(GameRoom& room);  // Added: Advance through game stages
+  void handleShowdown(GameRoom& room);     // Added: Handle showdown logic
+  void broadcastGameState(GameRoom& room); // Added: Broadcast state to all players
+  
+  // Communication
   json receiveMessage(int clientSocket);
   void sendMessage(int clientSocket, const json& data);
+  
+  // Utility
   MessageType getMessageType(const std::string& typeStr);
   ActionType getActionType(const std::string& typeStr);
 };

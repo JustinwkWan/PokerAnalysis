@@ -1,4 +1,5 @@
 #include "server.h"
+#include "poker.h"
 #include <thread>
 #include <mutex>
 #include <algorithm>
@@ -181,6 +182,9 @@ void Server::handleClient(int client_fd)
       case MessageType::UNREGISTER:
         handleUnregister(request, client_fd, client_username);
         break;
+      case MessageType::START_GAME:
+        handleStartGame(request, client_fd);
+        break;
       case MessageType::PLAY_TURN:
         handleAction(request, client_fd);
         break;
@@ -253,7 +257,7 @@ void Server::handleRegister(const json &request, int client_fd, std::string &cli
   if(username.empty()) {
     json response = {
       {"type", "REGISTER_RESPONSE"},
-      {"status", "ERROR"},  // Fixed: was missing closing quote
+      {"status", "ERROR"},
       {"error", "empty username"}
     };
     sendMessage(client_fd, response);
@@ -307,7 +311,8 @@ void Server::handleListGames(const json &request, int client_fd)
       {"game_id", game.second.gameID},
       {"small_blind", game.second.smallBlind},
       {"big_blind", game.second.bigBlind},
-      {"player_count", game.second.players.size()}
+      {"player_count", game.second.players.size()},
+      {"game_stage", game.second.gameStages}
     });
   }
   
@@ -367,7 +372,7 @@ void Server::handleCreateGame(const json &request, int client_fd)
     game_id = nextGameID++;
   }
 
-  // Create GameRoom struct
+  // Create GameRoom struct with Poker instance
   GameRoom newRoom;
   newRoom.gameID = game_id;
   newRoom.smallBlind = smallBlind;
@@ -377,8 +382,9 @@ void Server::handleCreateGame(const json &request, int client_fd)
   newRoom.currentBet = 0;
   newRoom.buttonPosition = 0;
   newRoom.gameStages = "WAITING";
+  newRoom.poker = std::make_unique<Poker>(); // Initialize poker game with smart pointer
   
-  gameRooms[game_id] = newRoom;
+  gameRooms[game_id] = std::move(newRoom); // Use move semantics
   
   json response = {
     {"type", "CREATE_GAME_RESPONSE"},
@@ -430,6 +436,14 @@ void Server::handleJoinGame(const json &request, int client_fd)
   if (it->second.players.size() >= MAX_PLAYERS) {
     response["status"] = "ERROR";
     response["error"] = "Game room is full";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // Check if game already started
+  if (it->second.gameStages != "WAITING") {
+    response["status"] = "ERROR";
+    response["error"] = "Game already in progress";
     sendMessage(client_fd, response);
     return;
   }
@@ -569,6 +583,265 @@ void Server::handleUnregister(const json &request, int client_fd, std::string &c
   cout << username << " unregistered successfully" << endl;
 }
 
+void Server::handleStartGame(const json& request, int client_fd) {
+  std::lock_guard<std::mutex> lock(server_mutex);
+  
+  int game_id = request["game_id"];
+  string username = request["username"];
+  
+  json response = {{"type", "START_GAME_RESPONSE"}};
+  
+  // Find game room
+  auto roomIt = gameRooms.find(game_id);
+  if (roomIt == gameRooms.end()) {
+    response["status"] = "ERROR";
+    response["error"] = "Game not found";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  GameRoom& room = roomIt->second;
+  
+  // Check minimum players (at least 2)
+  if (room.players.size() < 2) {
+    response["status"] = "ERROR";
+    response["error"] = "Need at least 2 players to start";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // Check if game already started
+  if (room.gameStages != "WAITING") {
+    response["status"] = "ERROR";
+    response["error"] = "Game already started";
+    sendMessage(client_fd, response);
+    return;
+  }
+  
+  // Start the game - reset deck and deal cards
+  room.poker->resetDeck();
+  room.gameStages = "PREFLOP";
+  room.Pot = 0;
+  room.currentBet = 0;
+  
+  // Deal hole cards to each player
+  for (auto& player : room.players) {
+    player.holeCards = room.poker->dealCards(2);
+    player.hasHand = true;
+    player.isActive = true;
+    player.currentBet = 0;
+  }
+  
+  // Post blinds
+  int sbIdx = (room.buttonPosition + 1) % room.players.size();
+  int bbIdx = (room.buttonPosition + 2) % room.players.size();
+  
+  int sbAmount = std::min(room.smallBlind, room.players[sbIdx].chips);
+  room.players[sbIdx].chips -= sbAmount;
+  room.players[sbIdx].currentBet = sbAmount;
+  room.Pot += sbAmount;
+  
+  int bbAmount = std::min(room.bigBlind, room.players[bbIdx].chips);
+  room.players[bbIdx].chips -= bbAmount;
+  room.players[bbIdx].currentBet = bbAmount;
+  room.Pot += bbAmount;
+  room.currentBet = bbAmount;
+  
+  // Set current player (first to act after big blind)
+  room.currentPlayerIndex = (bbIdx + 1) % room.players.size();
+  
+  response["status"] = "SUCCESS";
+  response["message"] = "Game started";
+  response["pot"] = room.Pot;
+  response["current_bet"] = room.currentBet;
+  
+  sendMessage(client_fd, response);
+  
+  // Notify all players about game start and their hole cards
+  for (size_t i = 0; i < room.players.size(); i++) {
+    json notify = {
+      {"type", "GAME_STARTED"},
+      {"game_id", game_id},
+      {"your_position", i},
+      {"button_position", room.buttonPosition},
+      {"small_blind_position", sbIdx},
+      {"big_blind_position", bbIdx},
+      {"pot", room.Pot},
+      {"current_bet", room.currentBet},
+      {"hole_cards", json::array()}
+    };
+    
+    // Add hole cards
+    for (const auto& card : room.players[i].holeCards) {
+      notify["hole_cards"].push_back({
+        {"rank", room.poker->rankToString(card.rank)},
+        {"suit", room.poker->suitToString(card.suit)}
+      });
+    }
+    
+    sendMessage(room.players[i].server_fd, notify);
+  }
+  
+  cout << "Game " << game_id << " started with " << room.players.size() << " players" << endl;
+}
+
+void Server::advanceGameStage(GameRoom& room) {
+  if (room.gameStages == "PREFLOP") {
+    // Deal flop
+    room.poker->dealFlop();
+    room.gameStages = "FLOP";
+    room.currentBet = 0;
+    
+    // Reset player bets for new round
+    for (auto& player : room.players) {
+      player.currentBet = 0;
+    }
+    
+  } else if (room.gameStages == "FLOP") {
+    // Deal turn
+    room.poker->dealTurn();
+    room.gameStages = "TURN";
+    room.currentBet = 0;
+    
+    for (auto& player : room.players) {
+      player.currentBet = 0;
+    }
+    
+  } else if (room.gameStages == "TURN") {
+    // Deal river
+    room.poker->dealRiver();
+    room.gameStages = "RIVER";
+    room.currentBet = 0;
+    
+    for (auto& player : room.players) {
+      player.currentBet = 0;
+    }
+    
+  } else if (room.gameStages == "RIVER") {
+    // Showdown
+    room.gameStages = "SHOWDOWN";
+    handleShowdown(room);
+    return;
+  }
+  
+  // Broadcast new community cards to all players
+  broadcastGameState(room);
+}
+
+void Server::handleShowdown(GameRoom& room) {
+  // Collect all active players' hands
+  std::vector<std::vector<Card>> activeHands;
+  std::vector<int> activePlayerIndices;
+  
+  for (size_t i = 0; i < room.players.size(); i++) {
+    if (room.players[i].hasHand && room.players[i].isActive) {
+      activeHands.push_back(room.players[i].holeCards);
+      activePlayerIndices.push_back(i);
+    }
+  }
+  
+  // Determine winners
+  std::vector<int> winnerIndices = room.poker->determineWinners(activeHands);
+  
+  // Convert to actual player indices
+  std::vector<int> actualWinners;
+  for (int idx : winnerIndices) {
+    actualWinners.push_back(activePlayerIndices[idx]);
+  }
+  
+  // Split pot among winners
+  int potShare = room.Pot / actualWinners.size();
+  int remainder = room.Pot % actualWinners.size();
+  
+  for (size_t i = 0; i < actualWinners.size(); i++) {
+    int winnerIdx = actualWinners[i];
+    room.players[winnerIdx].chips += potShare;
+    if (i == 0) {
+      room.players[winnerIdx].chips += remainder; // First winner gets remainder
+    }
+  }
+  
+  // Broadcast showdown results
+  json showdownMsg = {
+    {"type", "SHOWDOWN"},
+    {"game_id", room.gameID},
+    {"pot", room.Pot},
+    {"winners", json::array()},
+    {"community_cards", json::array()}
+  };
+  
+  // Add winner info
+  for (int winnerIdx : actualWinners) {
+    const Player& winner = room.players[winnerIdx];
+    Poker::HandValue handVal = room.poker->evaluateHandDetailed(winner.holeCards);
+    
+    showdownMsg["winners"].push_back({
+      {"username", winner.username},
+      {"hand_rank", room.poker->handRankToString(handVal.rank)},
+      {"chips_won", potShare + (winnerIdx == actualWinners[0] ? remainder : 0)},
+      {"total_chips", winner.chips}
+    });
+  }
+  
+  // Add community cards
+  for (const auto& card : room.poker->getCommunityCards()) {
+    showdownMsg["community_cards"].push_back({
+      {"rank", room.poker->rankToString(card.rank)},
+      {"suit", room.poker->suitToString(card.suit)}
+    });
+  }
+  
+  // Send to all players
+  for (const auto& player : room.players) {
+    sendMessage(player.server_fd, showdownMsg);
+  }
+  
+  // Reset for next hand
+  room.gameStages = "WAITING";
+  room.Pot = 0;
+  room.currentBet = 0;
+  room.buttonPosition = (room.buttonPosition + 1) % room.players.size();
+}
+
+void Server::broadcastGameState(GameRoom& room) {
+  std::vector<Card> communityCards = room.poker->getCommunityCards();
+  
+  json stateMsg = {
+    {"type", "GAME_STATE_UPDATE"},
+    {"game_id", room.gameID},
+    {"stage", room.gameStages},
+    {"pot", room.Pot},
+    {"current_bet", room.currentBet},
+    {"current_player", room.currentPlayerIndex},
+    {"community_cards", json::array()},
+    {"players", json::array()}
+  };
+  
+  // Add community cards
+  for (const auto& card : communityCards) {
+    stateMsg["community_cards"].push_back({
+      {"rank", room.poker->rankToString(card.rank)},
+      {"suit", room.poker->suitToString(card.suit)}
+    });
+  }
+  
+  // Add player info (without hole cards)
+  for (const auto& player : room.players) {
+    stateMsg["players"].push_back({
+      {"username", player.username},
+      {"chips", player.chips},
+      {"current_bet", player.currentBet},
+      {"is_active", player.isActive},
+      {"has_hand", player.hasHand}
+    });
+  }
+  
+  // Send to all players
+  for (const auto& player : room.players) {
+    sendMessage(player.server_fd, stateMsg);
+  }
+}
+
 bool Server::handleAction(const json& request, int client_fd) {
   std::lock_guard<std::mutex> lock(server_mutex);
   
@@ -607,7 +880,7 @@ bool Server::handleAction(const json& request, int client_fd) {
   
   GameRoom& room = roomIt->second;
   
-  // Get player index
+  // Check if it's player's turn
   auto playerIdxIt = room.playerIndex.find(username);
   if (playerIdxIt == room.playerIndex.end()) {
     response["status"] = "ERROR";
@@ -617,6 +890,14 @@ bool Server::handleAction(const json& request, int client_fd) {
   }
   
   int playerIdx = playerIdxIt->second;
+  
+  if (playerIdx != room.currentPlayerIndex) {
+    response["status"] = "ERROR";
+    response["error"] = "Not your turn";
+    sendMessage(client_fd, response);
+    return false;
+  }
+  
   Player& player = room.players[playerIdx];
 
   // Parse action type
@@ -758,6 +1039,55 @@ bool Server::handleAction(const json& request, int client_fd) {
   }
   
   sendMessage(client_fd, response);
+  
+  // Move to next player
+  do {
+    room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.size();
+  } while (!room.players[room.currentPlayerIndex].isActive && 
+           !room.players[room.currentPlayerIndex].hasHand);
+  
+  // Check if betting round is complete
+  bool bettingComplete = true;
+  int activePlayers = 0;
+  
+  for (const auto& p : room.players) {
+    if (p.hasHand && p.isActive) {
+      activePlayers++;
+      if (p.currentBet != room.currentBet && p.chips > 0) {
+        bettingComplete = false;
+      }
+    }
+  }
+  
+  // If only one player left, they win
+  if (activePlayers == 1) {
+    for (auto& p : room.players) {
+      if (p.hasHand && p.isActive) {
+        p.chips += room.Pot;
+        
+        json winMsg = {
+          {"type", "GAME_OVER"},
+          {"winner", p.username},
+          {"pot", room.Pot}
+        };
+        
+        for (const auto& player : room.players) {
+          sendMessage(player.server_fd, winMsg);
+        }
+        
+        room.gameStages = "WAITING";
+        room.Pot = 0;
+        break;
+      }
+    }
+  } else if (bettingComplete) {
+    // Advance to next stage
+    advanceGameStage(room);
+  } else {
+    // Broadcast game state
+    broadcastGameState(room);
+  }
+  
   cout << "Action processed: " << username << " - " << actionStr << endl;
   return true; 
 }
