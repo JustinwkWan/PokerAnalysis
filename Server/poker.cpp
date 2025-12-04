@@ -158,6 +158,46 @@ bool Poker::isStraight(const std::vector<Card>& hand) const {
     return false;
 }
 
+// Get the high card of a straight (returns 5 for wheel A-2-3-4-5)
+int getStraightHighCard(const std::vector<int>& sortedRanks) {
+    std::vector<int> ranks = sortedRanks;
+    std::sort(ranks.begin(), ranks.end());
+    ranks.erase(std::unique(ranks.begin(), ranks.end()), ranks.end());
+    
+    // Check for regular straight
+    int consecutive = 1;
+    int highCard = ranks[0];
+    for(size_t i = 1; i < ranks.size(); ++i) {
+        if(ranks[i] == ranks[i-1] + 1) {
+            consecutive++;
+            highCard = ranks[i];
+            if(consecutive >= 5) {
+                // Continue to find highest possible straight
+            }
+        } else {
+            consecutive = 1;
+            highCard = ranks[i];
+        }
+    }
+    
+    if(consecutive >= 5) {
+        return highCard;
+    }
+    
+    // Check for wheel (A-2-3-4-5)
+    bool hasAce = std::find(ranks.begin(), ranks.end(), 14) != ranks.end();
+    bool has2 = std::find(ranks.begin(), ranks.end(), 2) != ranks.end();
+    bool has3 = std::find(ranks.begin(), ranks.end(), 3) != ranks.end();
+    bool has4 = std::find(ranks.begin(), ranks.end(), 4) != ranks.end();
+    bool has5 = std::find(ranks.begin(), ranks.end(), 5) != ranks.end();
+    
+    if(hasAce && has2 && has3 && has4 && has5) {
+        return 5;  // Wheel straight, 5 is high
+    }
+    
+    return 0;  // No straight
+}
+
 // Evaluate a poker hand (player's hole cards + community cards)
 HandRank Poker::evaluateHand(const std::vector<Card>& holeCards) const {
     // Combine hole cards with community cards
@@ -264,6 +304,38 @@ bool Poker::HandValue::operator==(const HandValue& other) const {
     return true;
 }
 
+// Get flush cards for a specific suit
+std::vector<int> getFlushCards(const std::vector<Card>& allCards, Suit flushSuit) {
+    std::vector<int> flushRanks;
+    for(const auto& card : allCards) {
+        if(card.suit == flushSuit) {
+            flushRanks.push_back(static_cast<int>(card.rank));
+        }
+    }
+    std::sort(flushRanks.rbegin(), flushRanks.rend());
+    return flushRanks;
+}
+
+// Check for straight flush and return high card (0 if none)
+int getStraightFlushHighCard(const std::vector<Card>& allCards) {
+    // Group cards by suit
+    std::map<Suit, std::vector<int>> suitCards;
+    for(const auto& card : allCards) {
+        suitCards[card.suit].push_back(static_cast<int>(card.rank));
+    }
+    
+    int bestHigh = 0;
+    for(auto& [suit, ranks] : suitCards) {
+        if(ranks.size() >= 5) {
+            int high = getStraightHighCard(ranks);
+            if(high > bestHigh) {
+                bestHigh = high;
+            }
+        }
+    }
+    return bestHigh;
+}
+
 // Detailed hand evaluation with tie-breaking values
 Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards) const {
     HandValue result;
@@ -279,6 +351,7 @@ Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards)
     
     // Count ranks
     auto rankCounts = countRanks(allCards);
+    auto suitCounts = countSuits(allCards);
     
     // Find pairs, trips, quads
     std::vector<int> quads;
@@ -305,19 +378,36 @@ Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards)
     std::sort(pairs.rbegin(), pairs.rend());
     std::sort(singles.rbegin(), singles.rend());
     
-    bool flush = isFlush(allCards);
-    bool straight = isStraight(allCards);
+    // Check for flush
+    Suit flushSuit = Suit::Hearts;
+    bool hasFlush = false;
+    for(const auto& [suit, count] : suitCounts) {
+        if(count >= 5) {
+            hasFlush = true;
+            flushSuit = suit;
+            break;
+        }
+    }
+    
+    // Check for straight
+    std::vector<int> allRanks;
+    for(const auto& card : allCards) {
+        allRanks.push_back(static_cast<int>(card.rank));
+    }
+    int straightHigh = getStraightHighCard(allRanks);
+    bool hasStraight = (straightHigh > 0);
+    
+    // Check for straight flush
+    int straightFlushHigh = getStraightFlushHighCard(allCards);
     
     // Determine hand rank and values for comparison
-    if(straight && flush) {
-        result.rank = HandRank::StraightFlush;
-        // Get highest card in straight for comparison
-        std::vector<int> ranks;
-        for(const auto& card : allCards) {
-            ranks.push_back(static_cast<int>(card.rank));
+    if(straightFlushHigh > 0) {
+        if(straightFlushHigh == 14) {
+            result.rank = HandRank::RoyalFlush;
+        } else {
+            result.rank = HandRank::StraightFlush;
         }
-        std::sort(ranks.rbegin(), ranks.rend());
-        result.values.push_back(ranks[0]);  // High card of straight
+        result.values.push_back(straightFlushHigh);
     }
     else if(!quads.empty()) {
         result.rank = HandRank::FourOfAKind;
@@ -332,27 +422,23 @@ Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards)
         result.values.push_back(trips[0]);  // Trip rank
         result.values.push_back(pairs[0]);   // Pair rank
     }
-    else if(flush) {
+    else if(trips.size() >= 2) {
+        // Two trips - use highest as trips, second as pair
+        result.rank = HandRank::FullHouse;
+        result.values.push_back(trips[0]);
+        result.values.push_back(trips[1]);
+    }
+    else if(hasFlush) {
         result.rank = HandRank::Flush;
-        // Add all 5 highest cards for comparison
-        std::vector<int> ranks;
-        for(const auto& card : allCards) {
-            ranks.push_back(static_cast<int>(card.rank));
-        }
-        std::sort(ranks.rbegin(), ranks.rend());
-        for(int i = 0; i < 5 && i < (int)ranks.size(); i++) {
-            result.values.push_back(ranks[i]);
+        // Get the 5 highest cards of the flush suit
+        std::vector<int> flushRanks = getFlushCards(allCards, flushSuit);
+        for(int i = 0; i < 5 && i < (int)flushRanks.size(); i++) {
+            result.values.push_back(flushRanks[i]);
         }
     }
-    else if(straight) {
+    else if(hasStraight) {
         result.rank = HandRank::Straight;
-        // Get highest card in straight
-        std::vector<int> ranks;
-        for(const auto& card : allCards) {
-            ranks.push_back(static_cast<int>(card.rank));
-        }
-        std::sort(ranks.rbegin(), ranks.rend());
-        result.values.push_back(ranks[0]);
+        result.values.push_back(straightHigh);
     }
     else if(!trips.empty()) {
         result.rank = HandRank::ThreeOfAKind;
@@ -362,6 +448,11 @@ Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards)
         for(int s : singles) {
             if(kickersAdded >= 2) break;
             result.values.push_back(s);
+            kickersAdded++;
+        }
+        for(int p : pairs) {
+            if(kickersAdded >= 2) break;
+            result.values.push_back(p);
             kickersAdded++;
         }
     }
@@ -387,11 +478,13 @@ Poker::HandValue Poker::evaluateHandDetailed(const std::vector<Card>& holeCards)
     else {
         result.rank = HandRank::HighCard;
         // Add top 5 cards
-        int cardsAdded = 0;
-        for(int s : singles) {
-            if(cardsAdded >= 5) break;
-            result.values.push_back(s);
-            cardsAdded++;
+        std::vector<int> allRanksSorted;
+        for(const auto& card : allCards) {
+            allRanksSorted.push_back(static_cast<int>(card.rank));
+        }
+        std::sort(allRanksSorted.rbegin(), allRanksSorted.rend());
+        for(int i = 0; i < 5 && i < (int)allRanksSorted.size(); i++) {
+            result.values.push_back(allRanksSorted[i]);
         }
     }
     
@@ -429,12 +522,6 @@ std::vector<int> Poker::determineWinners(const std::vector<std::vector<Card>>& p
     }
     
     return winners;
-}
-
-// Handle blinds (small blind and big blind)
-void Poker::handleBlinds() {
-    // This would typically be handled by the game room/server
-    // Placeholder for now
 }
 
 // Get game state as a string (for debugging/display)

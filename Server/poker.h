@@ -92,10 +92,7 @@ public:
         bool operator==(const HandValue& other) const;
     };
     HandValue evaluateHandDetailed(const std::vector<Card>& holeCards) const;
-    
-    // Poker mechanics
-    void handleBlinds();
-    
+
     // Utility functions
     std::string rankToString(Rank r) const;
     std::string suitToString(Suit s) const;
