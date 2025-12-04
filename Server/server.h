@@ -19,7 +19,12 @@ using std::cerr;
 using std::endl;
 
 const int MAX_PLAYERS = 9;
-
+//Try to do as many changes on index.html and if not possible, tell me why and do not start the ones in server.cpp 
+//TODO: Fix the betting buttons, Bet and Raise should be the same button depending on turn
+//TODO: Get rid of Unknown as an action
+//TODO: Remove all in as an action, can be done with raise
+//TODO: Start the next hand after 2 seconds
+//TODO: Stop game after One person busts 
 enum class MessageType {
     LOGIN,
     REGISTER,

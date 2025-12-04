@@ -208,7 +208,6 @@
 </head>
 <body>
     <div class="container">
-        <h1>♠ Texas Hold'em Poker ♥</h1>
         
         <!-- Connection status (small, top right) -->
         <div style="position: fixed; top: 10px; right: 10px; padding: 5px 10px; background: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12px;">
@@ -229,10 +228,11 @@
         
         <!-- Lobby Panel -->
         <div class="panel hidden" id="lobbyPanel">
-            <h2>Game Lobby</h2>
+            <h2>Game Lobby <span style="font-size: 14px; color: #aaa;">(<span id="loggedInAs"></span>)</span></h2>
             <div class="flex-row" style="margin-bottom: 15px;">
                 <button onclick="listGames()">Refresh Games</button>
                 <button onclick="showCreateGame()">Create Game</button>
+                <button onclick="unregister()" style="background: #dc3545; color: white;">Logout</button>
             </div>
             <div id="createGameForm" class="hidden" style="margin: 15px 0; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 5px;">
                 <h3>Create New Game</h3>
@@ -285,10 +285,8 @@
                 <div class="flex-row" style="justify-content: center;">
                     <button class="action-btn fold" onclick="playAction('FOLD')">Fold</button>
                     <button class="action-btn check" onclick="playAction('CHECK')" id="checkBtn">Check</button>
-                    <button class="action-btn call" onclick="playAction('CALL')" id="callBtn">Call</button>
-                    <button class="action-btn bet" onclick="playAction('BET')" id="betBtn">Bet</button>
-                    <button class="action-btn raise" onclick="playAction('RAISE')" id="raiseBtn">Raise</button>
-                    <button class="action-btn allin" onclick="playAction('ALL_IN')">All In</button>
+                    <button class="action-btn call" onclick="playAction('CALL')" id="callBtn">Call <span id="callAmount"></span></button>
+                    <button class="action-btn bet" onclick="playBetOrRaise()" id="betRaiseBtn">Bet</button>
                 </div>
                 <div class="flex-row" style="justify-content: center; margin-top: 10px;">
                     <label>Amount: <input type="number" id="betAmount" value="20" min="1" style="width: 100px;"></label>
@@ -380,9 +378,22 @@
                         log(data.message, 'success');
                         document.getElementById('registerPanel').classList.add('hidden');
                         document.getElementById('lobbyPanel').classList.remove('hidden');
+                        document.getElementById('loggedInAs').textContent = username;
                         listGames();
                     } else {
                         log(`Registration failed: ${data.error}`, 'error');
+                    }
+                    break;
+                
+                case 'UNREGISTER_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log('Logged out successfully', 'success');
+                        username = '';
+                        document.getElementById('lobbyPanel').classList.add('hidden');
+                        document.getElementById('registerPanel').classList.remove('hidden');
+                        document.getElementById('username').value = '';
+                    } else {
+                        log(`Logout failed: ${data.error}`, 'error');
                     }
                     break;
                     
@@ -544,6 +555,14 @@
             send({ type: 'EXIT_GAME', username: username });
         }
         
+        function unregister() {
+            if (currentGameId) {
+                log('Please exit the game first before logging out', 'error');
+                return;
+            }
+            send({ type: 'UNREGISTER', username: username });
+        }
+        
         function startGame() {
             send({ type: 'START_GAME', game_id: currentGameId, username: username });
         }
@@ -551,6 +570,9 @@
         function handleGameStarted(data) {
             log('Game has started!', 'success');
             myPosition = data.your_position;
+            
+            // Clear community cards for new hand
+            document.getElementById('communityCardsDisplay').innerHTML = '';
             
             // Display my cards
             displayCards('myCardsDisplay', data.hole_cards);
@@ -611,6 +633,22 @@
             // Clear my cards
             document.getElementById('myCardsDisplay').innerHTML = '';
             document.getElementById('stage').textContent = 'WAITING';
+            
+            // Check if anyone busted and if game should end
+            const activePlayers = data.players.filter(p => p.chips > 0);
+            if (activePlayers.length <= 1) {
+                const winner = activePlayers[0];
+                log(`🎉 GAME OVER! ${winner ? winner.username : 'Unknown'} wins the game!`, 'success');
+                return; // Don't auto-start next hand
+            }
+            
+            // Auto-start next hand after 2 seconds
+            log('Next hand starting in 2 seconds...', 'info');
+            setTimeout(() => {
+                if (currentGameId) {
+                    startGame();
+                }
+            }, 2000);
         }
         
         function handleGameOver(data) {
@@ -629,6 +667,22 @@
             document.getElementById('stage').textContent = 'WAITING';
             document.getElementById('pot').textContent = '0';
             document.getElementById('currentBet').textContent = '0';
+            
+            // Check if anyone busted and if game should end
+            const activePlayers = data.players.filter(p => p.chips > 0);
+            if (activePlayers.length <= 1) {
+                const winner = activePlayers[0];
+                log(`🎉 GAME OVER! ${winner ? winner.username : 'Unknown'} wins the game!`, 'success');
+                return; // Don't auto-start next hand
+            }
+            
+            // Auto-start next hand after 2 seconds
+            log('Next hand starting in 2 seconds...', 'info');
+            setTimeout(() => {
+                if (currentGameId) {
+                    startGame();
+                }
+            }, 2000);
         }
         
         function displayCards(containerId, cards) {
@@ -682,17 +736,38 @@
                     // Update button availability
                     const currentBet = parseInt(document.getElementById('currentBet').textContent);
                     const myBet = players[currentPlayerIndex].current_bet || 0;
+                    const callAmount = currentBet - myBet;
                     
+                    // Check/Call logic
                     document.getElementById('checkBtn').disabled = currentBet > myBet;
                     document.getElementById('callBtn').disabled = currentBet <= myBet;
-                    document.getElementById('betBtn').disabled = currentBet > 0;
-                    document.getElementById('raiseBtn').disabled = currentBet === 0;
+                    document.getElementById('callAmount').textContent = callAmount > 0 ? `(${callAmount})` : '';
+                    
+                    // Bet/Raise button - changes text based on situation
+                    const betRaiseBtn = document.getElementById('betRaiseBtn');
+                    if (currentBet === 0) {
+                        betRaiseBtn.textContent = 'Bet';
+                        betRaiseBtn.className = 'action-btn bet';
+                    } else {
+                        betRaiseBtn.textContent = 'Raise';
+                        betRaiseBtn.className = 'action-btn raise';
+                    }
                 } else {
                     document.getElementById('actionPanel').classList.add('hidden');
                 }
             } else {
                 document.getElementById('actionPanel').classList.add('hidden');
                 isMyTurn = false;
+            }
+        }
+        
+        // Combined Bet/Raise function
+        function playBetOrRaise() {
+            const currentBet = parseInt(document.getElementById('currentBet').textContent);
+            if (currentBet === 0) {
+                playAction('BET');
+            } else {
+                playAction('RAISE');
             }
         }
         
