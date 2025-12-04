@@ -232,15 +232,6 @@ HandRank Poker::evaluateHand(const std::vector<Card>& holeCards) const {
     
     // Determine hand rank
     if(straight && flush) {
-        // Check for royal flush (10-J-Q-K-A of same suit)
-        bool hasRoyal = false;
-        for(const auto& card : allCards) {
-            if(card.rank == Rank::Ace) {
-                hasRoyal = true;
-                break;
-            }
-        }
-        // Simplified check - just return straight flush for now
         return HandRank::StraightFlush;
     }
     
