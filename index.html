@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Texas Hold'em Poker</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: #1a472a;
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .panel {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .panel h2 {
+            margin-top: 0;
+            border-bottom: 1px solid #ffd700;
+            padding-bottom: 10px;
+        }
+        input, button, select {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        input {
+            background: rgba(255,255,255,0.9);
+            color: #333;
+        }
+        button {
+            background: #ffd700;
+            color: #1a472a;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #ffed4a;
+            transform: scale(1.05);
+        }
+        button:disabled {
+            background: #666;
+            color: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .action-btn {
+            min-width: 100px;
+        }
+        .action-btn.fold { background: #dc3545; color: white; }
+        .action-btn.check { background: #17a2b8; color: white; }
+        .action-btn.call { background: #28a745; color: white; }
+        .action-btn.bet { background: #fd7e14; color: white; }
+        .action-btn.raise { background: #e83e8c; color: white; }
+        .action-btn.allin { background: #6610f2; color: white; }
+        
+        #log {
+            background: rgba(0,0,0,0.5);
+            border-radius: 5px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        #log div {
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #69db7c; }
+        .info { color: #74c0fc; }
+        
+        .card {
+            display: inline-block;
+            width: 60px;
+            height: 84px;
+            background: white;
+            border-radius: 5px;
+            margin: 3px;
+            text-align: center;
+            line-height: 84px;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+        .card.hearts, .card.diamonds { color: #dc3545; }
+        .card.clubs, .card.spades { color: #212529; }
+        .card.hidden {
+            background: linear-gradient(135deg, #1a472a 25%, #2d5a3c 25%, #2d5a3c 50%, #1a472a 50%, #1a472a 75%, #2d5a3c 75%);
+            background-size: 10px 10px;
+            color: transparent;
+        }
+        
+        #communityCards {
+            text-align: center;
+            min-height: 100px;
+            padding: 10px;
+            background: rgba(0,100,0,0.3);
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        #playerInfo {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        .player-box {
+            background: rgba(0,0,0,0.4);
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 200px;
+            text-align: center;
+        }
+        .player-box.current {
+            border: 3px solid #ffd700;
+            box-shadow: 0 0 20px rgba(255,215,0,0.5);
+        }
+        .player-box.folded {
+            opacity: 0.5;
+        }
+        .player-box h3 {
+            margin: 0 0 10px 0;
+            color: #ffd700;
+        }
+        .player-chips {
+            font-size: 18px;
+            color: #69db7c;
+        }
+        .player-bet {
+            color: #74c0fc;
+            font-size: 14px;
+        }
+        
+        #gameInfo {
+            text-align: center;
+            font-size: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        #pot {
+            color: #ffd700;
+            font-weight: bold;
+        }
+        #stage {
+            color: #74c0fc;
+        }
+        
+        .games-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .game-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+        
+        .hidden { display: none; }
+        
+        .flex-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        #myCards {
+            text-align: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        #myCards h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <!-- Connection status (small, top right) -->
+        <div style="position: fixed; top: 10px; right: 10px; padding: 5px 10px; background: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12px;">
+            <span id="connectionStatus">Connecting...</span>
+        </div>
+        
+        <!-- Hidden server URL input -->
+        <input type="hidden" id="serverUrl" value="ws://localhost:8081">
+        
+        <!-- Registration Panel -->
+        <div class="panel hidden" id="registerPanel">
+            <h2>Register</h2>
+            <div class="flex-row">
+                <input type="text" id="username" placeholder="Enter username">
+                <button onclick="register()">Register</button>
+            </div>
+        </div>
+        
+        <!-- Lobby Panel -->
+        <div class="panel hidden" id="lobbyPanel">
+            <h2>Game Lobby <span style="font-size: 14px; color: #aaa;">(<span id="loggedInAs"></span>)</span></h2>
+            <div class="flex-row" style="margin-bottom: 15px;">
+                <button onclick="listGames()">Refresh Games</button>
+                <button onclick="showCreateGame()">Create Game</button>
+                <button onclick="unregister()" style="background: #dc3545; color: white;">Logout</button>
+            </div>
+            <div id="createGameForm" class="hidden" style="margin: 15px 0; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 5px;">
+                <h3>Create New Game</h3>
+                <div class="flex-row">
+                    <label>Small Blind: <input type="number" id="smallBlind" value="10" min="1" style="width: 80px;"></label>
+                    <label>Big Blind: <input type="number" id="bigBlind" value="20" min="2" style="width: 80px;"></label>
+                    <label>Starting Stack: <input type="number" id="startingStack" value="1000" min="100" style="width: 100px;"></label>
+                    <button id="createBtn" onclick="createGame()">Create</button>
+                    <button onclick="hideCreateGame()">Cancel</button>
+                </div>
+            </div>
+            <div class="games-list" id="gamesList">
+                <p>Click "Refresh Games" to see available games</p>
+            </div>
+        </div>
+        
+        <!-- Game Room Panel -->
+        <div class="panel hidden" id="gameRoomPanel">
+            <h2>Game Room <span id="gameRoomId"></span></h2>
+            <div class="flex-row" style="margin-bottom: 15px;">
+                <button onclick="startGame()">Start Game</button>
+                <button onclick="exitGame()">Exit Game</button>
+            </div>
+            
+            <!-- Game Info -->
+            <div id="gameInfo">
+                <span>Pot: <span id="pot">0</span></span> | 
+                <span>Current Bet: <span id="currentBet">0</span></span> | 
+                <span>Stage: <span id="stage">WAITING</span></span>
+            </div>
+            
+            <!-- Community Cards -->
+            <div id="communityCards">
+                <h3>Community Cards</h3>
+                <div id="communityCardsDisplay"></div>
+            </div>
+            
+            <!-- My Cards -->
+            <div id="myCards">
+                <h3>Your Cards</h3>
+                <div id="myCardsDisplay"></div>
+            </div>
+            
+            <!-- Players -->
+            <div id="playerInfo"></div>
+            
+            <!-- Actions -->
+            <div id="actionPanel" class="hidden" style="text-align: center; margin-top: 20px;">
+                <h3>Your Turn!</h3>
+                <div class="flex-row" style="justify-content: center;">
+                    <button class="action-btn fold" onclick="playAction('FOLD')">Fold</button>
+                    <button class="action-btn check" onclick="playAction('CHECK')" id="checkBtn">Check</button>
+                    <button class="action-btn call" onclick="playAction('CALL')" id="callBtn">Call <span id="callAmount"></span></button>
+                    <button class="action-btn bet" onclick="playBetOrRaise()" id="betRaiseBtn">Bet</button>
+                </div>
+                <div class="flex-row" style="justify-content: center; margin-top: 10px;">
+                    <label>Amount: <input type="number" id="betAmount" value="20" min="1" style="width: 100px;"></label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Log Panel -->
+        <div class="panel">
+            <h2>Game Log</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let username = '';
+        let currentGameId = null;
+        let myPosition = -1;
+        let isMyTurn = false;
+        
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function connect() {
+            const url = document.getElementById('serverUrl').value;
+            log(`Connecting to ${url}...`);
+            
+            try {
+                ws = new WebSocket(url);
+                
+                ws.onopen = () => {
+                    log('Connected to server!', 'success');
+                    document.getElementById('connectionStatus').textContent = 'Connected';
+                    document.getElementById('connectionStatus').style.color = '#69db7c';
+                    document.getElementById('registerPanel').classList.remove('hidden');
+                };
+                
+                ws.onclose = () => {
+                    log('Disconnected from server', 'error');
+                    document.getElementById('connectionStatus').textContent = 'Disconnected';
+                    document.getElementById('connectionStatus').style.color = '#ff6b6b';
+                    resetUI();
+                };
+                
+                ws.onerror = (error) => {
+                    log('WebSocket error', 'error');
+                    console.error(error);
+                };
+                
+                ws.onmessage = (event) => {
+                    console.log('Raw message received:', event.data);
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('Parsed message:', data);
+                        handleMessage(data);
+                    } catch (e) {
+                        console.error('Failed to parse message:', e);
+                        console.error('Raw data was:', event.data);
+                    }
+                };
+            } catch (e) {
+                log(`Connection error: ${e.message}`, 'error');
+            }
+        }
+        
+        function send(data) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+                console.log('Sent:', data);
+            } else {
+                log('Not connected to server', 'error');
+            }
+        }
+        
+        function handleMessage(data) {
+            console.log('handleMessage called with:', data);
+            log(`Received: ${data.type}`, 'info');
+            
+            switch (data.type) {
+                case 'REGISTER_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log(data.message, 'success');
+                        document.getElementById('registerPanel').classList.add('hidden');
+                        document.getElementById('lobbyPanel').classList.remove('hidden');
+                        document.getElementById('loggedInAs').textContent = username;
+                        listGames();
+                    } else {
+                        log(`Registration failed: ${data.error}`, 'error');
+                    }
+                    break;
+                
+                case 'UNREGISTER_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log('Logged out successfully', 'success');
+                        username = '';
+                        document.getElementById('lobbyPanel').classList.add('hidden');
+                        document.getElementById('registerPanel').classList.remove('hidden');
+                        document.getElementById('username').value = '';
+                    } else {
+                        log(`Logout failed: ${data.error}`, 'error');
+                    }
+                    break;
+                    
+                case 'LIST_GAMES_RESPONSE':
+                    log(`Found ${data.games ? data.games.length : 0} games`, 'info');
+                    displayGames(data.games);
+                    break;
+                    
+                case 'CREATE_GAME_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log(`Game created with ID: ${data.game_id}`, 'success');
+                        hideCreateGame();
+                        // Auto-join the game we just created
+                        joinGame(data.game_id);
+                    } else {
+                        log(`Failed to create game: ${data.error}`, 'error');
+                    }
+                    break;
+                    
+                case 'JOIN_GAME_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log('Joined game successfully', 'success');
+                        document.getElementById('lobbyPanel').classList.add('hidden');
+                        document.getElementById('gameRoomPanel').classList.remove('hidden');
+                        document.getElementById('gameRoomId').textContent = `#${currentGameId}`;
+                    } else {
+                        log(`Failed to join game: ${data.error}`, 'error');
+                        currentGameId = null;
+                    }
+                    break;
+                    
+                case 'EXIT_GAME_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log('Exited game', 'success');
+                        currentGameId = null;
+                        document.getElementById('gameRoomPanel').classList.add('hidden');
+                        document.getElementById('lobbyPanel').classList.remove('hidden');
+                        listGames();
+                    } else {
+                        log(`Failed to exit game: ${data.error}`, 'error');
+                    }
+                    break;
+                    
+                case 'START_GAME_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log('Game started!', 'success');
+                    } else {
+                        log(`Failed to start game: ${data.error}`, 'error');
+                    }
+                    break;
+                    
+                case 'GAME_STARTED':
+                    handleGameStarted(data);
+                    break;
+                    
+                case 'GAME_STATE_UPDATE':
+                    handleGameStateUpdate(data);
+                    break;
+                    
+                case 'PLAY_TURN_RESPONSE':
+                    if (data.status === 'SUCCESS') {
+                        log(data.message, 'success');
+                    } else {
+                        log(`Action failed: ${data.error}`, 'error');
+                    }
+                    break;
+                    
+                case 'SHOWDOWN':
+                    handleShowdown(data);
+                    break;
+                    
+                case 'GAME_OVER':
+                    handleGameOver(data);
+                    break;
+                    
+                default:
+                    log(`Unknown message type: ${data.type}`, 'info');
+            }
+        }
+        
+        function register() {
+            username = document.getElementById('username').value.trim();
+            if (!username) {
+                log('Please enter a username', 'error');
+                return;
+            }
+            send({ type: 'REGISTER', name: username });
+        }
+        
+        function listGames() {
+            send({ type: 'LIST_GAMES' });
+        }
+        
+        function displayGames(games) {
+            const container = document.getElementById('gamesList');
+            console.log('displayGames called with:', games);
+            
+            if (!games || games.length === 0) {
+                container.innerHTML = '<p>No games available. Create one!</p>';
+                return;
+            }
+            
+            log(`Displaying ${games.length} games`, 'info');
+            container.innerHTML = games.map(g => `
+                <div class="game-item">
+                    <span>Game #${g.game_id} | Blinds: ${g.small_blind}/${g.big_blind} | Players: ${g.player_count} | ${g.game_stage}</span>
+                    <button onclick="joinGame(${g.game_id})" ${g.game_stage !== 'WAITING' ? 'disabled' : ''}>
+                        ${g.game_stage === 'WAITING' ? 'Join' : 'In Progress'}
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        function showCreateGame() {
+            document.getElementById('createGameForm').classList.remove('hidden');
+        }
+        
+        function createGame() {
+            const btn = document.getElementById('createBtn');
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+            
+            const smallBlind = parseInt(document.getElementById('smallBlind').value);
+            const bigBlind = parseInt(document.getElementById('bigBlind').value);
+            send({ type: 'CREATE_GAME', small_blind: smallBlind, big_blind: bigBlind });
+        }
+        
+        function hideCreateGame() {
+            document.getElementById('createGameForm').classList.add('hidden');
+            // Re-enable the button
+            const btn = document.getElementById('createBtn');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Create';
+            }
+        }
+        
+        function joinGame(gameId) {
+            // Get starting stack - try form field first, then use default
+            const stackInput = document.getElementById('startingStack');
+            let stack = stackInput ? parseInt(stackInput.value) : 1000;
+            
+            // Validate stack
+            if (!stack || stack <= 0) {
+                stack = 1000;
+            }
+            
+            currentGameId = gameId;
+            log(`Joining game ${gameId} with stack ${stack}...`, 'info');
+            send({
+                type: 'JOIN_GAME',
+                game_id: gameId,
+                username: username,
+                starting_stack: stack
+            });
+        }
+        
+        function exitGame() {
+            send({ type: 'EXIT_GAME', username: username });
+        }
+        
+        function unregister() {
+            if (currentGameId) {
+                log('Please exit the game first before logging out', 'error');
+                return;
+            }
+            send({ type: 'UNREGISTER', username: username });
+        }
+        
+        function startGame() {
+            send({ type: 'START_GAME', game_id: currentGameId, username: username });
+        }
+        
+        function handleGameStarted(data) {
+            log('Game has started!', 'success');
+            myPosition = data.your_position;
+            
+            // Clear community cards for new hand
+            document.getElementById('communityCardsDisplay').innerHTML = '';
+            
+            // Display my cards
+            displayCards('myCardsDisplay', data.hole_cards);
+            
+            // Update game info
+            document.getElementById('pot').textContent = data.pot;
+            document.getElementById('currentBet').textContent = data.current_bet;
+            document.getElementById('stage').textContent = 'PREFLOP';
+            
+            // Display players
+            displayPlayers(data.players, data.current_player);
+            
+            // Check if it's my turn
+            checkMyTurn(data.current_player, data.players);
+        }
+        
+        function handleGameStateUpdate(data) {
+            log(`Stage: ${data.stage}`, 'info');
+            
+            // Update game info
+            document.getElementById('pot').textContent = data.pot;
+            document.getElementById('currentBet').textContent = data.current_bet;
+            document.getElementById('stage').textContent = data.stage;
+            
+            // Display community cards
+            displayCards('communityCardsDisplay', data.community_cards);
+            
+            // Display players
+            displayPlayers(data.players, data.current_player);
+            
+            // Check if it's my turn
+            checkMyTurn(data.current_player, data.players);
+        }
+        
+        function handleShowdown(data) {
+            log('=== SHOWDOWN ===', 'success');
+            
+            // Display final community cards
+            displayCards('communityCardsDisplay', data.community_cards);
+            
+            // Show all hands
+            data.all_hands.forEach(h => {
+                log(`${h.username}: ${h.cards.map(c => c.rank + c.suit).join(' ')} - ${h.hand_rank}`, 'info');
+            });
+            
+            // Announce winners
+            data.winners.forEach(w => {
+                log(`🏆 ${w.username} wins ${w.chips_won} with ${w.hand_rank}!`, 'success');
+            });
+            
+            // Update player chips
+            displayPlayers(data.players, -1);
+            
+            // Hide action panel
+            document.getElementById('actionPanel').classList.add('hidden');
+            isMyTurn = false;
+            
+            // Clear my cards
+            document.getElementById('myCardsDisplay').innerHTML = '';
+            document.getElementById('stage').textContent = 'WAITING';
+            
+            // Check if anyone busted and if game should end
+            const activePlayers = data.players.filter(p => p.chips > 0);
+            if (activePlayers.length <= 1) {
+                const winner = activePlayers[0];
+                log(`🎉 GAME OVER! ${winner ? winner.username : 'Unknown'} wins the game!`, 'success');
+                return; // Don't auto-start next hand
+            }
+            
+            // Auto-start next hand after 2 seconds
+            log('Next hand starting in 2 seconds...', 'info');
+            setTimeout(() => {
+                if (currentGameId) {
+                    startGame();
+                }
+            }, 2000);
+        }
+        
+        function handleGameOver(data) {
+            log(`🏆 ${data.winner} wins ${data.pot}! (${data.reason})`, 'success');
+            
+            // Update player chips
+            displayPlayers(data.players, -1);
+            
+            // Hide action panel
+            document.getElementById('actionPanel').classList.add('hidden');
+            isMyTurn = false;
+            
+            // Clear cards
+            document.getElementById('myCardsDisplay').innerHTML = '';
+            document.getElementById('communityCardsDisplay').innerHTML = '';
+            document.getElementById('stage').textContent = 'WAITING';
+            document.getElementById('pot').textContent = '0';
+            document.getElementById('currentBet').textContent = '0';
+            
+            // Check if anyone busted and if game should end
+            const activePlayers = data.players.filter(p => p.chips > 0);
+            if (activePlayers.length <= 1) {
+                const winner = activePlayers[0];
+                log(`🎉 GAME OVER! ${winner ? winner.username : 'Unknown'} wins the game!`, 'success');
+                return; // Don't auto-start next hand
+            }
+            
+            // Auto-start next hand after 2 seconds
+            log('Next hand starting in 2 seconds...', 'info');
+            setTimeout(() => {
+                if (currentGameId) {
+                    startGame();
+                }
+            }, 2000);
+        }
+        
+        function displayCards(containerId, cards) {
+            const container = document.getElementById(containerId);
+            if (!cards || cards.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            container.innerHTML = cards.map(c => {
+                const suitClass = getSuitClass(c.suit);
+                return `<div class="card ${suitClass}">${c.rank}${c.suit}</div>`;
+            }).join('');
+        }
+        
+        function getSuitClass(suit) {
+            if (suit === '♥' || suit === 'Hearts') return 'hearts';
+            if (suit === '♦' || suit === 'Diamonds') return 'diamonds';
+            if (suit === '♣' || suit === 'Clubs') return 'clubs';
+            if (suit === '♠' || suit === 'Spades') return 'spades';
+            return '';
+        }
+        
+        function displayPlayers(players, currentPlayer) {
+            const container = document.getElementById('playerInfo');
+            container.innerHTML = players.map((p, i) => {
+                const isCurrentPlayer = i === currentPlayer;
+                const isFolded = !p.has_hand;
+                const isMe = p.username === username;
+                
+                return `
+                    <div class="player-box ${isCurrentPlayer ? 'current' : ''} ${isFolded ? 'folded' : ''}">
+                        <h3>${p.username} ${isMe ? '(You)' : ''}</h3>
+                        <div class="player-chips">💰 ${p.chips}</div>
+                        <div class="player-bet">Bet: ${p.current_bet || 0}</div>
+                        ${isFolded ? '<div style="color:#ff6b6b">Folded</div>' : ''}
+                        ${!p.is_active && p.has_hand ? '<div style="color:#ffd700">All-In</div>' : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function checkMyTurn(currentPlayerIndex, players) {
+            if (currentPlayerIndex >= 0 && currentPlayerIndex < players.length) {
+                isMyTurn = players[currentPlayerIndex].username === username;
+                
+                if (isMyTurn) {
+                    document.getElementById('actionPanel').classList.remove('hidden');
+                    log("It's your turn!", 'success');
+                    
+                    // Update button availability
+                    const currentBet = parseInt(document.getElementById('currentBet').textContent);
+                    const myBet = players[currentPlayerIndex].current_bet || 0;
+                    const callAmount = currentBet - myBet;
+                    
+                    // Check/Call logic
+                    document.getElementById('checkBtn').disabled = currentBet > myBet;
+                    document.getElementById('callBtn').disabled = currentBet <= myBet;
+                    document.getElementById('callAmount').textContent = callAmount > 0 ? `(${callAmount})` : '';
+                    
+                    // Bet/Raise button - changes text based on situation
+                    const betRaiseBtn = document.getElementById('betRaiseBtn');
+                    if (currentBet === 0) {
+                        betRaiseBtn.textContent = 'Bet';
+                        betRaiseBtn.className = 'action-btn bet';
+                    } else {
+                        betRaiseBtn.textContent = 'Raise';
+                        betRaiseBtn.className = 'action-btn raise';
+                    }
+                } else {
+                    document.getElementById('actionPanel').classList.add('hidden');
+                }
+            } else {
+                document.getElementById('actionPanel').classList.add('hidden');
+                isMyTurn = false;
+            }
+        }
+        
+        // Combined Bet/Raise function
+        function playBetOrRaise() {
+            const currentBet = parseInt(document.getElementById('currentBet').textContent);
+            if (currentBet === 0) {
+                playAction('BET');
+            } else {
+                playAction('RAISE');
+            }
+        }
+        
+        function playAction(action) {
+            if (!isMyTurn) {
+                log("It's not your turn!", 'error');
+                return;
+            }
+            
+            const amount = parseInt(document.getElementById('betAmount').value) || 0;
+            
+            const message = {
+                type: 'PLAY_TURN',
+                username: username,
+                game_id: currentGameId,
+                action: action
+            };
+            
+            if (action === 'BET' || action === 'RAISE' || action === 'CALL') {
+                if (action === 'CALL') {
+                    // Calculate call amount
+                    const currentBet = parseInt(document.getElementById('currentBet').textContent);
+                    const playerInfo = document.getElementById('playerInfo');
+                    // Find my current bet from the display
+                    let myCurrentBet = 0;
+                    const players = playerInfo.querySelectorAll('.player-box');
+                    players.forEach(p => {
+                        if (p.textContent.includes('(You)')) {
+                            const betMatch = p.textContent.match(/Bet: (\d+)/);
+                            if (betMatch) myCurrentBet = parseInt(betMatch[1]);
+                        }
+                    });
+                    message.amount = currentBet - myCurrentBet;
+                } else {
+                    message.amount = amount;
+                }
+            }
+            
+            send(message);
+        }
+        
+        function resetUI() {
+            document.getElementById('registerPanel').classList.add('hidden');
+            document.getElementById('lobbyPanel').classList.add('hidden');
+            document.getElementById('gameRoomPanel').classList.add('hidden');
+            document.getElementById('actionPanel').classList.add('hidden');
+            currentGameId = null;
+            myPosition = -1;
+            isMyTurn = false;
+            
+            // Try to reconnect after 2 seconds
+            setTimeout(() => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    log('Attempting to reconnect...', 'info');
+                    connect();
+                }
+            }, 2000);
+        }
+        
+        // Auto-connect on page load
+        window.onload = connect;
+    </script>
+</body>
+</html>

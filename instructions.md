@@ -1,17 +1,15 @@
-Installs
+# Install dependencies (if needed)
+sudo apt-get update
+sudo apt-get install -y build-essential libssl-dev nlohmann-json3-dev
 
-On Windows:
-curl -O https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp
+# Build the server
+make
 
-On Linux: 
-sudo yum install nlohmann-json3-dev
-sudo yum install openssl-devel
-
-To Run 
-cd Server
-make 
+# Start the poker server (in one terminal)
 ./poker_server
 
-In a new terminal 
-cd Server 
+# Serve the frontend (in another terminal)
 python3 -m http.server 8000
+
+# Open your browser to:
+# http://localhost:8000/index.html
