@@ -5,8 +5,14 @@
 #include <algorithm>
 #include <cstring>
 #include <openssl/sha.h>
-#include <libkern/OSByteOrder.h>
 #include <poll.h>
+
+// macOS compatibility for byte-swapping functions
+#ifdef __APPLE__
+#include <libkern/OSByteOrder.h>
+#define be64toh(x) OSSwapBigToHostInt64(x)
+#define htobe64(x) OSSwapHostToBigInt64(x)
+#endif
 
 // Global mutex for thread safety
 std::mutex server_mutex;
@@ -14,83 +20,97 @@ std::mutex server_mutex;
 // WebSocket constants
 static const std::string WS_MAGIC_STRING = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-Server::Server()
-{
-    nextGameID = 1;
-    
-    // Create TCP socket
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == 0)
+    Server::Server()
     {
-        cerr << "Socket creation error" << endl;
-        exit(EXIT_FAILURE);
+        nextGameID = 1;
+        
+        // Create TCP socket
+        server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd == 0)
+        {
+            cerr << "Socket creation error" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        // Set socket options
+        int opt = 1;
+        if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
+        {
+            cerr << "TCP setsockopt SO_REUSEADDR error" << endl;
+            exit(EXIT_FAILURE);
+        }
+        
+    #ifdef SO_REUSEPORT
+        if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)))
+        {
+            // SO_REUSEPORT is optional - just warn if it fails
+            cerr << "Warning: TCP setsockopt SO_REUSEPORT failed (non-critical)" << endl;
+        }
+    #endif
+
+        // Setup address for TCP (port 8080)
+        sockaddr_in serverAddress;
+        serverAddress.sin_family = AF_INET;
+        serverAddress.sin_port = htons(8080);
+        serverAddress.sin_addr.s_addr = INADDR_ANY;
+
+        // Bind TCP socket
+        if (bind(server_fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
+        {
+            cerr << "TCP Bind failed" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        // Listen on TCP
+        if (listen(server_fd, 10) < 0)
+        {
+            cerr << "TCP Listen failed" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        cout << "TCP Server started on port 8080" << endl;
+        
+        // Create WebSocket server socket (port 8081)
+        ws_server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (ws_server_fd == 0)
+        {
+            cerr << "WebSocket socket creation error" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        if (setsockopt(ws_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
+        {
+            cerr << "WebSocket setsockopt SO_REUSEADDR error" << endl;
+            exit(EXIT_FAILURE);
+        }
+        
+    #ifdef SO_REUSEPORT
+        if (setsockopt(ws_server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)))
+        {
+            // SO_REUSEPORT is optional - just warn if it fails
+            cerr << "Warning: WebSocket setsockopt SO_REUSEPORT failed (non-critical)" << endl;
+        }
+    #endif
+
+        sockaddr_in wsAddress;
+        wsAddress.sin_family = AF_INET;
+        wsAddress.sin_port = htons(8081);
+        wsAddress.sin_addr.s_addr = INADDR_ANY;
+
+        if (bind(ws_server_fd, (struct sockaddr *)&wsAddress, sizeof(wsAddress)) < 0)
+        {
+            cerr << "WebSocket Bind failed" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        if (listen(ws_server_fd, 10) < 0)
+        {
+            cerr << "WebSocket Listen failed" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        cout << "WebSocket Server started on port 8081" << endl;
     }
-
-    // Set socket options
-    int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                   &opt, sizeof(opt)))
-    {
-        cerr << "setsockopt error" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    // Setup address for TCP (port 8080)
-    sockaddr_in serverAddress;
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(8080);
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
-
-    // Bind TCP socket
-    if (bind(server_fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
-    {
-        cerr << "TCP Bind failed" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    // Listen on TCP
-    if (listen(server_fd, 10) < 0)
-    {
-        cerr << "TCP Listen failed" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    cout << "TCP Server started on port 8080" << endl;
-    
-    // Create WebSocket server socket (port 8081)
-    ws_server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (ws_server_fd == 0)
-    {
-        cerr << "WebSocket socket creation error" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    if (setsockopt(ws_server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                   &opt, sizeof(opt)))
-    {
-        cerr << "WebSocket setsockopt error" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    sockaddr_in wsAddress;
-    wsAddress.sin_family = AF_INET;
-    wsAddress.sin_port = htons(8081);
-    wsAddress.sin_addr.s_addr = INADDR_ANY;
-
-    if (bind(ws_server_fd, (struct sockaddr *)&wsAddress, sizeof(wsAddress)) < 0)
-    {
-        cerr << "WebSocket Bind failed" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(ws_server_fd, 10) < 0)
-    {
-        cerr << "WebSocket Listen failed" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    cout << "WebSocket Server started on port 8081" << endl;
-}
 
 Server::~Server()
 {
@@ -204,11 +224,7 @@ json Server::receiveWebSocketMessage(int client_fd) {
     } else if (payload_len == 127) {
         uint64_t len64;
         recv(client_fd, &len64, 8, MSG_WAITALL);
-        #ifdef __APPLE__
-payload_len = OSSwapBigToHostInt64(len64);
-#else
-payload_len = be64toh(len64);
-#endif
+        payload_len = be64toh(len64);
     }
     
     // Get mask key if present
