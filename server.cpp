@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <openssl/sha.h>
+#include <libkern/OSByteOrder.h>
 #include <poll.h>
 
 // Global mutex for thread safety
@@ -203,7 +204,11 @@ json Server::receiveWebSocketMessage(int client_fd) {
     } else if (payload_len == 127) {
         uint64_t len64;
         recv(client_fd, &len64, 8, MSG_WAITALL);
-        payload_len = be64toh(len64);
+        #ifdef __APPLE__
+payload_len = OSSwapBigToHostInt64(len64);
+#else
+payload_len = be64toh(len64);
+#endif
     }
     
     // Get mask key if present

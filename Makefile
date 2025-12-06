@@ -1,8 +1,7 @@
 # Texas Hold'em Poker Server - Makefile
 
 all:
-	g++ -std=c++17 -Wall -Wextra -g -pthread main.cpp server.cpp poker.cpp -o poker_server -lssl -lcrypto
-
+	g++ server.cpp -o server -I/opt/homebrew/include -L/opt/homebrew/lib -lssl -lcrypto -std=c++17
 clean:
 	rm -f poker_server
 
