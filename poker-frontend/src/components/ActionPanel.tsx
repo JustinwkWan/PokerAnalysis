@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 
-const ActionPanel = ({ currentBet, myBet, onAction }) => {
-  const [betAmount, setBetAmount] = useState(20);
+const ActionPanel: React.FC<{ currentBet: number; myBet: number; onAction: (action: string, amount?: number) => void }> = ({ currentBet, myBet, onAction }) => {
+  const [betAmount, setBetAmount] = useState<number>(20);
   
   const callAmount = currentBet - myBet;
   const canCheck = currentBet === myBet;

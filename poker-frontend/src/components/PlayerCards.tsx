@@ -1,5 +1,9 @@
-const Card = ({ rank, suit }) => {
-  const getSuitClass = (s) => {
+import React from 'react';
+
+type CardType = { rank: string; suit: string };
+
+const Card: React.FC<CardType> = ({ rank, suit }) => {
+  const getSuitClass = (s: string) => {
     if (s === '♥' || s === 'Hearts') return 'hearts';
     if (s === '♦' || s === 'Diamonds') return 'diamonds';
     if (s === '♣' || s === 'Clubs') return 'clubs';
@@ -14,11 +18,11 @@ const Card = ({ rank, suit }) => {
   );
 };
 
-const CommunityCards = ({ cards }) => {
+const PlayerCards: React.FC<{ cards: CardType[] }> = ({ cards }) => {
   return (
-    <div id="communityCards">
-      <h3>Community Cards</h3>
-      <div id="communityCardsDisplay">
+    <div id="myCards">
+      <h3>Your Cards</h3>
+      <div id="myCardsDisplay">
         {cards && cards.length > 0 ? (
           cards.map((card, i) => (
             <Card key={i} rank={card.rank} suit={card.suit} />
@@ -29,4 +33,4 @@ const CommunityCards = ({ cards }) => {
   );
 };
 
-export default CommunityCards;
+export default PlayerCards;

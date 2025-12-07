@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 
-const RegisterPanel = ({ onRegister }) => {
+const RegisterPanel: React.FC<{ onRegister: (name: string) => void }> = ({ onRegister }) => {
+    console.log('RegisterPanel rendered!');
   const [username, setUsername] = useState('');
 
   const handleSubmit = () => {

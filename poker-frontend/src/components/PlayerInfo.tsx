@@ -1,4 +1,14 @@
-const PlayerInfo = ({ players, currentPlayer, username }) => {
+import React from 'react';
+
+type Player = {
+  username: string;
+  chips: number;
+  current_bet?: number;
+  has_hand?: boolean;
+  is_active?: boolean;
+};
+
+const PlayerInfo: React.FC<{ players: Player[]; currentPlayer: number; username: string }> = ({ players, currentPlayer, username }) => {
   return (
     <div id="playerInfo">
       {players.map((p, i) => {

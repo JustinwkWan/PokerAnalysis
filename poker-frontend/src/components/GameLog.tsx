@@ -1,4 +1,6 @@
-const GameLog = ({ messages }) => {
+import React from 'react';
+
+const GameLog: React.FC<{ messages: any[] }> = ({ messages }) => {
   return (
     <div className="panel">
       <h2>Game Log</h2>

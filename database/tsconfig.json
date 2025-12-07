@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
+}
+
+// Create `database/.env`:
+
+// DB_HOST=localhost
+// DB_USER=root
+// DB_PASSWORD=your_mysql_password
+// DB_NAME=poker_db
+// JWT_SECRET=your-super-secret-key-change-this
+// PORT=3001

@@ -1,21 +1,42 @@
 import { useState, useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import ConnectionStatus from './components/ConnectionStatus';
-import RegisterPanel from './components/RegisterPanel';
+import AuthPanel from './components/AuthPanel';
 import LobbyPanel from './components/LobbyPanel';
 import GameRoom from './components/GameRoom';
 import GameLog from './components/GameLog';
 import './styles/poker.css';
 
+type Card = { rank: string; suit: string };
+type Player = {
+  username: string;
+  chips: number;
+  current_bet?: number;
+  has_hand?: boolean;
+  is_active?: boolean;
+};
+
+type GameState = {
+  pot: number;
+  currentBet: number;
+  stage: string;
+  communityCards: Card[];
+  myCards: Card[];
+  players: Player[];
+  currentPlayer: number;
+};
+
 function App() {
-  const [serverUrl, setServerUrl] = useState('http://localhost:8081');
+  const [serverUrl, setServerUrl] = useState<string>('ws://localhost:8081');
   const { isConnected, send, onMessage, messages, log } = useWebSocket(serverUrl);
   
-  const [username, setUsername] = useState('');
-  const [currentGameId, setCurrentGameId] = useState(null);
-  const [myPosition, setMyPosition] = useState(-1);
-  const [games, setGames] = useState([]);
-  const [gameState, setGameState] = useState({
+  const [username, setUsername] = useState<string>('');
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [currentGameId, setCurrentGameId] = useState<number | null>(null);
+  const [myPosition, setMyPosition] = useState<number>(-1);
+  const [games, setGames] = useState<any[]>([]);
+  const [gameState, setGameState] = useState<GameState>({
     pot: 0,
     currentBet: 0,
     stage: 'WAITING',
@@ -25,26 +46,51 @@ function App() {
     currentPlayer: -1
   });
   
-  const [showRegister, setShowRegister] = useState(false);
+  const [showAuth, setShowAuth] = useState(true);
   const [showLobby, setShowLobby] = useState(false);
   const [showGameRoom, setShowGameRoom] = useState(false);
 
+  // Check for existing token on load
   useEffect(() => {
-    if (isConnected && !showRegister && !showLobby && !showGameRoom) {
-      setShowRegister(true);
+    const token = localStorage.getItem('poker_token');
+    const savedUsername = localStorage.getItem('poker_username');
+    const savedUserId = localStorage.getItem('poker_userId');
+    
+    if (token && savedUsername && savedUserId && isConnected) {
+      // Verify token is still valid
+      fetch('http://localhost:3001/api/verify', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.valid) {
+          setUsername(savedUsername);
+          setAuthToken(token);
+          setUserId(parseInt(savedUserId));
+          setShowAuth(false);
+          setShowLobby(true);
+          send({ type: 'REGISTER', name: savedUsername, token });
+        } else {
+          // Token expired
+          handleLogout();
+        }
+      })
+      .catch(() => {
+        handleLogout();
+      });
     }
   }, [isConnected]);
 
   useEffect(() => {
-    onMessage((data) => handleMessage(data));
+    onMessage((data: any) => handleMessage(data));
   }, [onMessage]);
 
-  const handleMessage = (data) => {
+  const handleMessage = (data: any) => {
     switch (data.type) {
       case 'REGISTER_RESPONSE':
         if (data.status === 'SUCCESS') {
           log(data.message, 'success');
-          setShowRegister(false);
+          setShowAuth(false);
           setShowLobby(true);
           send({ type: 'LIST_GAMES' });
         } else {
@@ -55,9 +101,7 @@ function App() {
       case 'UNREGISTER_RESPONSE':
         if (data.status === 'SUCCESS') {
           log('Logged out successfully', 'success');
-          setUsername('');
-          setShowLobby(false);
-          setShowRegister(true);
+          handleLogout();
         } else {
           log(`Logout failed: ${data.error}`, 'error');
         }
@@ -71,7 +115,6 @@ function App() {
       case 'CREATE_GAME_RESPONSE':
         if (data.status === 'SUCCESS') {
           log(`Game created with ID: ${data.game_id}`, 'success');
-          // Auto-join
           handleJoinGame(data.game_id);
         } else {
           log(`Failed to create game: ${data.error}`, 'error');
@@ -138,28 +181,42 @@ function App() {
     }
   };
 
-  const handleRegister = (name) => {
-    setUsername(name);
-    send({ type: 'REGISTER', name });
+  const handleAuthSuccess = (username: string, token: string, userId: number) => {
+    setUsername(username);
+    setAuthToken(token);
+    setUserId(userId);
+    
+    // Store token in localStorage
+    localStorage.setItem('poker_token', token);
+    localStorage.setItem('poker_username', username);
+    localStorage.setItem('poker_userId', userId.toString());
+    
+    // Register with poker server
+    send({ type: 'REGISTER', name: username, token });
   };
 
-  const handleUnregister = () => {
-    if (currentGameId) {
-      log('Please exit the game first before logging out', 'error');
-      return;
-    }
-    send({ type: 'UNREGISTER', username });
+  const handleLogout = () => {
+    setUsername('');
+    setAuthToken(null);
+    setUserId(null);
+    setShowLobby(false);
+    setShowGameRoom(false);
+    setShowAuth(true);
+    
+    localStorage.removeItem('poker_token');
+    localStorage.removeItem('poker_username');
+    localStorage.removeItem('poker_userId');
   };
 
   const handleListGames = () => {
     send({ type: 'LIST_GAMES' });
   };
 
-  const handleCreateGame = (smallBlind, bigBlind) => {
+  const handleCreateGame = (smallBlind: number, bigBlind: number) => {
     send({ type: 'CREATE_GAME', small_blind: smallBlind, big_blind: bigBlind });
   };
 
-  const handleJoinGame = (gameId, startingStack = 1000) => {
+  const handleJoinGame = (gameId: number, startingStack = 1000) => {
     setCurrentGameId(gameId);
     log(`Joining game ${gameId} with stack ${startingStack}...`, 'info');
     send({
@@ -178,8 +235,8 @@ function App() {
     send({ type: 'START_GAME', game_id: currentGameId, username });
   };
 
-  const handleAction = (action, amount = 0) => {
-    const message = {
+  const handleAction = (action: string, amount = 0) => {
+    const message: any = {
       type: 'PLAY_TURN',
       username,
       game_id: currentGameId,
@@ -198,7 +255,7 @@ function App() {
     send(message);
   };
 
-  const handleGameStarted = (data) => {
+  const handleGameStarted = (data: any) => {
     log('Game has started!', 'success');
     setMyPosition(data.your_position);
     setGameState({
@@ -212,7 +269,7 @@ function App() {
     });
   };
 
-  const handleGameStateUpdate = (data) => {
+  const handleGameStateUpdate = (data: any) => {
     log(`Stage: ${data.stage}`, 'info');
     setGameState({
       pot: data.pot,
@@ -225,14 +282,14 @@ function App() {
     });
   };
 
-  const handleShowdown = (data) => {
+  const handleShowdown = (data: any) => {
     log('=== SHOWDOWN ===', 'success');
     
-    data.all_hands.forEach(h => {
-      log(`${h.username}: ${h.cards.map(c => c.rank + c.suit).join(' ')} - ${h.hand_rank}`, 'info');
+    data.all_hands.forEach((h: any) => {
+      log(`${h.username}: ${h.cards.map((c: any) => c.rank + c.suit).join(' ')} - ${h.hand_rank}`, 'info');
     });
     
-    data.winners.forEach(w => {
+    data.winners.forEach((w: any) => {
       log(`🏆 ${w.username} wins ${w.chips_won} with ${w.hand_rank}!`, 'success');
     });
     
@@ -245,7 +302,7 @@ function App() {
       stage: 'WAITING'
     }));
     
-    const activePlayers = data.players.filter(p => p.chips > 0);
+    const activePlayers = data.players.filter((p: any) => p.chips > 0);
     if (activePlayers.length > 1) {
       log('Next hand starting in 2 seconds...', 'info');
       setTimeout(() => {
@@ -256,7 +313,7 @@ function App() {
     }
   };
 
-  const handleGameOver = (data) => {
+  const handleGameOver = (data: any) => {
     log(`🏆 ${data.winner} wins ${data.pot}! (${data.reason})`, 'success');
     
     setGameState(prev => ({
@@ -270,7 +327,7 @@ function App() {
       currentBet: 0
     }));
     
-    const activePlayers = data.players.filter(p => p.chips > 0);
+    const activePlayers = data.players.filter((p: any) => p.chips > 0);
     if (activePlayers.length > 1) {
       log('Next hand starting in 2 seconds...', 'info');
       setTimeout(() => {
@@ -293,8 +350,8 @@ function App() {
         style={{width: '300px', margin: '10px'}}
       />
       
-      {showRegister && (
-        <RegisterPanel onRegister={handleRegister} />
+      {showAuth && (
+        <AuthPanel onAuthSuccess={handleAuthSuccess} />
       )}
       
       {showLobby && (
@@ -304,7 +361,7 @@ function App() {
           onListGames={handleListGames}
           onCreateGame={handleCreateGame}
           onJoinGame={handleJoinGame}
-          onUnregister={handleUnregister}
+          onUnregister={handleLogout}
         />
       )}
       

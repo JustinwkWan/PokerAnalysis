@@ -1,17 +1,26 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 
-const LobbyPanel = ({ username, games, onListGames, onCreateGame, onJoinGame, onUnregister }) => {
+type Props = {
+  username: string;
+  games: any[];
+  onListGames: () => void;
+  onCreateGame: (smallBlind: number, bigBlind: number) => void;
+  onJoinGame: (gameId: any, startingStack?: number) => void;
+  onUnregister: () => void;
+};
+
+const LobbyPanel: React.FC<Props> = ({ username, games, onListGames, onCreateGame, onJoinGame, onUnregister }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [smallBlind, setSmallBlind] = useState(10);
-  const [bigBlind, setBigBlind] = useState(20);
-  const [startingStack, setStartingStack] = useState(1000);
+  const [smallBlind, setSmallBlind] = useState<number>(10);
+  const [bigBlind, setBigBlind] = useState<number>(20);
+  const [startingStack, setStartingStack] = useState<number>(1000);
 
   const handleCreate = () => {
     onCreateGame(smallBlind, bigBlind);
     setShowCreateForm(false);
   };
 
-  const handleJoin = (gameId) => {
+  const handleJoin = (gameId: any) => {
     onJoinGame(gameId, startingStack);
   };
 

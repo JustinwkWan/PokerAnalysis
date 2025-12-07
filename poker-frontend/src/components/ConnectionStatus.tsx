@@ -1,4 +1,6 @@
-const ConnectionStatus = ({ isConnected }) => {
+import React from 'react';
+
+const ConnectionStatus: React.FC<{ isConnected: boolean }> = ({ isConnected }) => {
   return (
     <div style={{
       position: 'fixed',
