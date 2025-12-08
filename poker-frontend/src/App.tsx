@@ -5,6 +5,7 @@ import AuthPanel from './components/AuthPanel';
 import LobbyPanel from './components/LobbyPanel';
 import GameRoom from './components/GameRoom';
 import GameLog from './components/GameLog';
+import StatsPanel from './components/StatsPanel';
 import './styles/poker.css';
 
 type Card = { rank: string; suit: string };
@@ -36,6 +37,7 @@ function App() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
   const [myPosition, setMyPosition] = useState<number>(-1);
   const [games, setGames] = useState<any[]>([]);
+  const [showStatsPanel, setShowStatsPanel] = useState<boolean>(false);
   const [gameState, setGameState] = useState<GameState>({
     pot: 0,
     currentBet: 0,
@@ -225,6 +227,15 @@ case 'REGISTER_RESPONSE':
     send({ type: 'LIST_GAMES' });
   };
 
+  const handleViewStats = () => {
+    setShowStatsPanel(true);
+    setShowLobby(false);
+  }
+
+  const handleCloseStats = () => {
+  setShowStatsPanel(false);
+  setShowLobby(true);
+};
   const handleCreateGame = (smallBlind: number, bigBlind: number) => {
     send({ type: 'CREATE_GAME', small_blind: smallBlind, big_blind: bigBlind });
   };
@@ -375,6 +386,7 @@ case 'REGISTER_RESPONSE':
           onCreateGame={handleCreateGame}
           onJoinGame={handleJoinGame}
           onUnregister={handleLogout}
+          onViewStats={handleViewStats}
         />
       )}
       
@@ -389,6 +401,13 @@ case 'REGISTER_RESPONSE':
           onAction={handleAction}
         />
       )}
+          {showStatsPanel && userId && (
+      <StatsPanel 
+        userId={userId} 
+        username={username}
+        onClose={handleCloseStats}
+      />
+    )}
       
       <GameLog messages={messages} />
     </div>

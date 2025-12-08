@@ -7,9 +7,10 @@ type Props = {
   onCreateGame: (smallBlind: number, bigBlind: number) => void;
   onJoinGame: (gameId: any, startingStack?: number) => void;
   onUnregister: () => void;
+  onViewStats: () => void; 
 };
 
-const LobbyPanel: React.FC<Props> = ({ username, games, onListGames, onCreateGame, onJoinGame, onUnregister }) => {
+const LobbyPanel: React.FC<Props> = ({ username, games, onListGames, onCreateGame, onJoinGame, onUnregister, onViewStats }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [smallBlind, setSmallBlind] = useState<number>(10);
   const [bigBlind, setBigBlind] = useState<number>(20);
@@ -31,6 +32,7 @@ const LobbyPanel: React.FC<Props> = ({ username, games, onListGames, onCreateGam
       <div className="flex-row" style={{marginBottom: '15px'}}>
         <button onClick={onListGames}>Refresh Games</button>
         <button onClick={() => setShowCreateForm(!showCreateForm)}>Create Game</button>
+        <button onClick={onViewStats}>View Stats</button>
         <button onClick={onUnregister} style={{background: '#dc3545', color: 'white'}}>Logout</button>
       </div>
 
