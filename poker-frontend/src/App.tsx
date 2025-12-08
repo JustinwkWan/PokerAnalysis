@@ -27,13 +27,13 @@ type GameState = {
 };
 
 function App() {
-  const [serverUrl, setServerUrl] = useState<string>('ws://localhost:8081');
+  const [serverUrl, setServerUrl] = useState<string>('http://localhost:8081');
   const { isConnected, send, onMessage, messages, log } = useWebSocket(serverUrl);
   
   const [username, setUsername] = useState<string>('');
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
-  const [currentGameId, setCurrentGameId] = useState<number | null>(null);
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
   const [myPosition, setMyPosition] = useState<number>(-1);
   const [games, setGames] = useState<any[]>([]);
   const [gameState, setGameState] = useState<GameState>({
@@ -51,35 +51,36 @@ function App() {
   const [showGameRoom, setShowGameRoom] = useState(false);
 
   // Check for existing token on load
-  useEffect(() => {
-    const token = localStorage.getItem('poker_token');
-    const savedUsername = localStorage.getItem('poker_username');
-    const savedUserId = localStorage.getItem('poker_userId');
-    
-    if (token && savedUsername && savedUserId && isConnected) {
-      // Verify token is still valid
-      fetch('http://localhost:3001/api/verify', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.valid) {
-          setUsername(savedUsername);
-          setAuthToken(token);
-          setUserId(parseInt(savedUserId));
-          setShowAuth(false);
-          setShowLobby(true);
-          send({ type: 'REGISTER', name: savedUsername, token });
-        } else {
-          // Token expired
-          handleLogout();
-        }
-      })
-      .catch(() => {
+useEffect(() => {
+  const token = localStorage.getItem('poker_token');
+  const savedUsername = localStorage.getItem('poker_username');
+  const savedUserId = localStorage.getItem('poker_userId');
+  
+  if (token && savedUsername && savedUserId && isConnected) {
+    // Verify token is still valid
+    fetch('http://localhost:3001/api/verify', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.valid) {
+        setUsername(savedUsername);
+        setAuthToken(token);
+        setUserId(parseInt(savedUserId));
+        // DON'T send REGISTER here, let the user see lobby first
+        setShowAuth(false);
+        setShowLobby(true);
+        // Register happens when they actually join/create a game
+      } else {
+        // Token expired
         handleLogout();
-      });
-    }
-  }, [isConnected]);
+      }
+    })
+    .catch(() => {
+      handleLogout();
+    });
+  }
+}, [isConnected]);
 
   useEffect(() => {
     onMessage((data: any) => handleMessage(data));
@@ -87,16 +88,19 @@ function App() {
 
   const handleMessage = (data: any) => {
     switch (data.type) {
-      case 'REGISTER_RESPONSE':
-        if (data.status === 'SUCCESS') {
-          log(data.message, 'success');
-          setShowAuth(false);
-          setShowLobby(true);
-          send({ type: 'LIST_GAMES' });
-        } else {
-          log(`Registration failed: ${data.error}`, 'error');
-        }
-        break;
+case 'REGISTER_RESPONSE':
+  if (data.status === 'SUCCESS') {
+    console.log('REGISTER_RESPONSE SUCCESS received'); // DEBUG
+    log(data.message, 'success');
+    setShowAuth(false);
+    setShowLobby(true);
+    console.log('Screen state changed, should show lobby now'); // DEBUG
+    send({ type: 'LIST_GAMES' });
+  } else {
+    log(`Registration failed: ${data.error}`, 'error');
+    setShowAuth(true); // Make sure we stay on auth screen
+  }
+  break;
         
       case 'UNREGISTER_RESPONSE':
         if (data.status === 'SUCCESS') {
@@ -191,8 +195,17 @@ function App() {
     localStorage.setItem('poker_username', username);
     localStorage.setItem('poker_userId', userId.toString());
     
-    // Register with poker server
+    // Immediately show lobby after successful REST API authentication
+    setShowAuth(false);
+    setShowLobby(true);
+    
+    // Register with poker server via WebSocket and request game list
     send({ type: 'REGISTER', name: username, token });
+    
+    // List available games
+    setTimeout(() => {
+      send({ type: 'LIST_GAMES' });
+    }, 500);
   };
 
   const handleLogout = () => {
@@ -217,7 +230,7 @@ function App() {
   };
 
   const handleJoinGame = (gameId: number, startingStack = 1000) => {
-    setCurrentGameId(gameId);
+    setCurrentGameId(gameId.toString());
     log(`Joining game ${gameId} with stack ${startingStack}...`, 'info');
     send({
       type: 'JOIN_GAME',
@@ -346,7 +359,7 @@ function App() {
         type="text" 
         value={serverUrl} 
         onChange={(e) => setServerUrl(e.target.value)}
-        placeholder="ws://server:8081"
+        placeholder="http://server:8081"
         style={{width: '300px', margin: '10px'}}
       />
       

@@ -528,6 +528,14 @@ void Server::handleRegister(const json &request, int client_fd, std::string &cli
     std::lock_guard<std::mutex> lock(server_mutex);
     
     string username = request["name"];
+    
+    // NEW: Check if token exists (optional for now)
+    string token = "";
+    if (request.contains("token")) {
+        token = request["token"];
+        cout << "Received token: " << token << endl;
+        // TODO: Verify token with auth server later
+    }
 
     if(username.empty()) {
         json response = {
@@ -559,7 +567,6 @@ void Server::handleRegister(const json &request, int client_fd, std::string &cli
 
     sendMessage(client_fd, response);
 }
-
 void Server::handleListGames(const json& /*request*/, int client_fd)
 {
     std::lock_guard<std::mutex> lock(server_mutex);
@@ -1402,7 +1409,7 @@ bool Server::handleAction(const json& request, int client_fd) {
     
     sendMessage(client_fd, response);
     
-    // Count active players
+    // Count active handle
     int activePlayers = 0;
     int playersWithHand = 0;
     for (const auto& p : room.players) {

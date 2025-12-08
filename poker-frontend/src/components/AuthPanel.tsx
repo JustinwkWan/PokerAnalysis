@@ -15,7 +15,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
 
   const handleSubmit = async () => {
     setError('');
-    
+    console.log('Login successful, calling onAuthSuccess');
     if (!username.trim() || !password.trim()) {
       setError('Please enter username and password');
       return;
@@ -36,7 +36,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
 
     try {
       const endpoint = isLogin ? '/api/login' : '/api/register';
-      const body = isLogin 
+      const body = isLogin
         ? { username, password }
         : { username, password, email: email || undefined };
 
@@ -56,11 +56,16 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
 
       if (isLogin) {
         // Login successful
+
+        console.log('Login successful, calling onAuthSuccess');
         onAuthSuccess(data.username, data.token, data.userId);
+        setLoading(false);
       } else {
         // Registration successful - auto login
         setIsLogin(true);
         setError('');
+
+        setLoading(false); // ADD THIS
         alert('Registration successful! Please login.');
       }
     } catch (err) {
@@ -74,9 +79,9 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
   return (
     <div className="panel auth-panel">
       <h1>🃏 Texas Hold'em Poker 🃏</h1>
-      
+
       <div className="auth-toggle">
-        <button 
+        <button
           className={isLogin ? 'active' : ''}
           onClick={() => {
             setIsLogin(true);
@@ -85,7 +90,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
         >
           Login
         </button>
-        <button 
+        <button
           className={!isLogin ? 'active' : ''}
           onClick={() => {
             setIsLogin(false);
@@ -98,9 +103,9 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
 
       <div className="auth-form">
         <h2>{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
-        
+
         {error && <div className="error-message">{error}</div>}
-        
+
         <input
           type="text"
           value={username}
@@ -109,7 +114,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
           disabled={loading}
           onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
         />
-        
+
         {!isLogin && (
           <input
             type="email"
@@ -120,7 +125,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
             onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
           />
         )}
-        
+
         <input
           type="password"
           value={password}
@@ -129,7 +134,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
           disabled={loading}
           onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
         />
-        
+
         {!isLogin && (
           <input
             type="password"
@@ -140,9 +145,9 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthSuccess }) => {
             onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
           />
         )}
-        
-        <button 
-          onClick={handleSubmit} 
+
+        <button
+          onClick={handleSubmit}
           className="auth-submit"
           disabled={loading}
         >
